@@ -96,8 +96,9 @@ body {
 #trunk-text {
   font-family: "Cinzel", "Times New Roman", serif;
   font-weight: 700;
-  font-size: 20px;
+  font-size: 17px;
   fill: #fffff0;
+  dominant-baseline: central;
   paint-order: stroke;
 }
 
@@ -119,6 +120,10 @@ body {
 
 .fruit:hover .bloom,
 .fruit:focus-visible .bloom { transform: scale(1.2); }
+/* 마우스를 올리면 통통 튄다 (위로 튀어 오른 뒤 점점 작게 감쇠) */
+.fruit:hover .bounce,
+.fruit:focus-visible .bounce { animation: bounce .95s cubic-bezier(.3, 0, .4, 1); }
+
 .fruit:hover .orbit,
 .fruit:focus-visible .orbit { opacity: 1; animation-duration: 6s; }
 .fruit:active .ring { transform: scale(.92); }
@@ -147,6 +152,16 @@ body {
   0%   { transform: translate(0, 0) scale(.6); opacity: 0; }
   15%  { opacity: .85; }
   100% { transform: translate(var(--dx, 6px), var(--dy, -70px)) scale(1.1); opacity: 0; }
+}
+@keyframes bounce {
+  0%   { transform: translateY(0)    scale(1.00, 1.00); }
+  10%  { transform: translateY(2px)  scale(1.12, .86); }   /* 웅크림 */
+  30%  { transform: translateY(-14px) scale(.93, 1.1); }   /* 튀어오름 */
+  48%  { transform: translateY(0)    scale(1.1, .9); }     /* 착지 */
+  62%  { transform: translateY(-7px) scale(.97, 1.05); }
+  76%  { transform: translateY(0)    scale(1.04, .96); }
+  88%  { transform: translateY(-2.5px) scale(1, 1); }
+  100% { transform: translateY(0)    scale(1, 1); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fade-in { to { opacity: 1; } }
@@ -209,7 +224,6 @@ body {
 @media (max-width: 640px) {
   .stage { padding-left: 4px; padding-right: 4px; }
   .stage::before { background-size: 36px 36px; }
-  #trunk-text { font-size: 21px; }
 }
 @media (max-height: 520px) and (orientation: landscape) {
   .stage { padding-top: 8px; padding-bottom: 8px; }
