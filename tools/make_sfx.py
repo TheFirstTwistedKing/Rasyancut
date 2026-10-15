@@ -1,4 +1,5 @@
-"""신화적·천체적 UI 효과음 합성 v2 (열매를 눌러 유물이 깨어나는 소리)
+"""신화적·천체적 UI 효과음 합성 v3 (열매를 눌러 유물이 깨어나는 소리)
+기준 곡: 사용자가 지정한 트랙(B 단조 / D 장조, 어둡고 저음역 중심)에 조성·음역을 맞춤
 
 사용: python3 tools/make_sfx.py            → assets/sfx/relic-awaken.wav
 필요: numpy, scipy
@@ -6,11 +7,11 @@
 v2 설계 (현실감 + 복합성 + 아름다움)
   A. 모달 종(교회종 비율)   : 단3도 부분음, 주파수 의존 감쇠, 모드가 둘로 갈라진 맥놀이(실제 종의 일렁임),
                               타격 직후 미세한 음정 상승(타격 비조화)
-  B. 유리 폭포              : E단조 음계로 빠르게 상행하는 결정음 → 맨 위에서 길게 울리며 정착
+  B. 유리 폭포              : B단조7(B D F# A B)으로 빠르게 상행하는 결정음 → 맨 위에서 길게 울리며 정착
   C. 유령 종                : 반음 위(단2도)의 약하고 늦은 종 → 아름답지만 편하지 않은 불안
   D. 별가루                 : 포아송 분포로 흩날리는 극소 결정음, 시간이 갈수록 성기게
   E. 기계 장치              : 래칫 틱(점점 느려지며 맞물림) + 서보 위잉 + 걸쇠 둔탁음
-  F. 공명                   : 장치음이 E 배음열 공진기를 건드려 생기는 공감 울림
+  F. 공명                   : 장치음이 B 배음열 공진기를 건드려 생기는 공감 울림
   G. 서브                   : 거의 들리지 않는 거대한 존재감
   H. 공간                   : 초기반사 + 대역별로 감쇠가 다른 차가운 잔향(고역이 빨리 죽음)
   마스터: 아주 약한 새추레이션으로 응집 → 고역 정리 → 끝 페이드
@@ -26,7 +27,11 @@ N = int(SR * DUR)
 t = np.arange(N) / SR
 rng = np.random.default_rng(20261015)
 
-ROOT = 659.26            # E5. 곡의 조성에 맞추려면 이 값만 바꾸면 된다 (단조 계열 권장)
+ROOT = 493.88            # B4. 기준 곡(B 단조 / D 장조, A4≈439.5Hz)의 으뜸음. 조성을 바꾸려면 이 값과 아래 KEY_* 만 바꾼다
+# 기준 곡의 키에 맞춘 음 집합 (B 단조 펜타토닉: B D E F# A)
+KEY_PENTA = [246.94, 293.66, 329.63, 369.99, 440.00]       # B3 D4 E4 F#4 A4
+KEY_FLAT2 = 523.25                                          # C5 : 으뜸음의 단2도 위(불안한 한 점)
+KEY_SERIES = [123.47, 246.94, 369.99, 493.88, 587.33, 739.99, 987.77]   # B 배음열(공진기)
 SEMI = 2 ** (1 / 12)
 
 # ── 유틸 ───────────────────────────────────────────────────────
@@ -80,7 +85,7 @@ DARK_BELL = [  # 비율, 진폭, 감쇠  (교회종: hum / prime / minor third /
     (2.00, 0.24, 0.17), (2.51, 0.11, 0.13), (3.01, 0.09, 0.10), (4.18, 0.055, 0.07),
     (5.43, 0.03, 0.05), (6.80, 0.02, 0.035),
 ]
-GLASS = [(1.0, 0.30, 0.16), (2.32, 0.12, 0.06), (4.25, 0.06, 0.03), (6.63, 0.03, 0.02)]
+GLASS = [(1.0, 0.30, 0.16), (2.32, 0.20, 0.07), (4.25, 0.11, 0.035), (6.63, 0.055, 0.022)]
 
 # ── 타격 트랜지언트: 말렛 접촉음 + 디지털 틱 ─────────────────────
 def strike_noise():
@@ -110,33 +115,33 @@ add(bellB, +0.28, 0.52, at=0.0006)
 strike = strike_noise()
 add(strike, 0.0, 1.0)
 
-# B. 유리 폭포: E 단조 상행 → 마지막 음에서 길게 정착
+# B. 유리 폭포: B 단조7 상행(B D F# A B) → 마지막 음에서 길게 정착
 cascade = [(ROOT * 2 * 1.0000, 0.0), (ROOT * 2 * 1.1892, 0.020), (ROOT * 2 * 1.4983, 0.041),
-           (ROOT * 2 * 1.7818, 0.064), (ROOT * 4 * 1.0000, 0.090)]           # E6 G6 B6 D7 E7
+           (ROOT * 2 * 1.7818, 0.064), (ROOT * 4 * 1.0000, 0.090)]           # B5 D6 F#6 A6 B6
 for i, (f, when) in enumerate(cascade):
     last = i == len(cascade) - 1
     g = modal_bell(f, GLASS, tau_scale=1.9 if last else 0.9, hardness=0.9)
-    amp = 0.30 if last else 0.17 + 0.03 * i
+    amp = 0.38 if last else 0.21 + 0.035 * i
     add(g, [-0.55, -0.2, 0.15, 0.45, 0.0][i], amp, at=when + 0.012)
 
 # C. 유령 종 (단2도 위, 늦게, 작게)
 ghost = modal_bell(ROOT * SEMI, [(1.0, 0.30, 0.26), (1.19, 0.16, 0.2), (2.0, 0.11, 0.12), (3.0, 0.05, 0.07)])
-add(ghost, 0.55, 0.30, at=0.034)
-add(ghost, -0.55, 0.15, at=0.052)
+add(ghost, 0.55, 0.20, at=0.034)
+add(ghost, -0.55, 0.10, at=0.052)
 
 # D. 별가루: 포아송 분포, 시간이 갈수록 성기게
-scale_hz = [329.63, 392.0, 440.0, 493.88, 587.33]           # E G A B D (E 단조 펜타토닉)
+scale_hz = KEY_PENTA
 t_ev, ev = 0.030, []
 while t_ev < 0.46:
     rate = 95 * np.exp(-(t_ev - 0.03) / 0.16) + 6
     t_ev += rng.exponential(1.0 / rate)
     ev.append(t_ev)
 for te in ev:
-    base = rng.choice(scale_hz) * 2 ** rng.integers(3, 5)     # 2.6k–9.4k
+    base = rng.choice(scale_hz) * 2 ** rng.choice([2, 3, 3, 4])      # 1k–7k (곡이 어두워 고음은 적게)
     if rng.random() < 0.07:
-        base = 698.46 * 2 ** rng.integers(3, 5)               # 아주 드문 F(단2도): 섬뜩한 한 점
+        base = KEY_FLAT2 * 2 ** rng.choice([2, 3])            # 아주 드문 C(단2도): 섬뜩한 한 점
     tau = rng.uniform(0.018, 0.07)
-    amp = rng.uniform(0.012, 0.045) * np.exp(-te / 0.30)
+    amp = rng.uniform(0.018, 0.06) * np.exp(-te / 0.30)
     p_ = np.sin(2 * np.pi * base * t) * env_exp(tau, 0.0002)
     p_ += 0.3 * np.sin(2 * np.pi * base * 2.76 * t) * env_exp(tau * 0.4, 0.0002)
     add(p_, rng.uniform(-0.9, 0.9), amp, at=te)
@@ -149,27 +154,27 @@ for when, a in ratchet:
     tick = bp(rng.standard_normal(N), c * 0.8, c * 1.3, 2) * env_exp(0.003, 0.00004) * 3.4
     tink = np.sin(2 * np.pi * rng.uniform(4800, 7600) * t) * env_exp(0.014, 0.00005) * 0.09
     mech += delayed(tick + tink, when) * a * 0.20
-sweep_f = 240 * (1500 / 240) ** np.clip(t / 0.15, 0, 1)
+sweep_f = 246.94 * (1975.5 / 246.94) ** np.clip(t / 0.15, 0, 1)      # B3 → B6
 ph = 2 * np.pi * np.cumsum(sweep_f) / SR
 whirr = sum(np.sin(h * ph) / h for h in (1, 2, 3, 4)) * np.sin(np.pi * np.clip(t / 0.17, 0, 1)) ** 2
 whirr = bp(whirr, 500, 3200) * 0.05
 mech += whirr
-f_latch = 140 * (70 / 140) ** np.clip(t / 0.06, 0, 1)
-latch = np.sin(2 * np.pi * np.cumsum(f_latch) / SR) * env_exp(0.045, 0.0008) * 0.16
+f_latch = 123.47 * (61.74 / 123.47) ** np.clip(t / 0.06, 0, 1)    # B2 → B1
+latch = np.sin(2 * np.pi * np.cumsum(f_latch) / SR) * env_exp(0.05, 0.0008) * 0.24
 add(mech, 0.0, 1.0)
 add(latch, 0.0, 1.0)
 
 # F. 공감 공명: 장치음이 E 배음열 공진기를 건드린다
 sym = np.zeros(N)
-for fr in [164.81, 329.63, 493.88, 659.26, 784.0, 987.77, 1318.5]:
+for fr in KEY_SERIES:
     b, a_ = iirpeak(fr, Q=70, fs=SR)
     sym += sosfilt(tf2sos(b, a_), mech + strike * 0.5)
 add(sym, 0.0, 1.8)
 
 # G. 서브: 거의 안 들리는 거대한 존재
-f_sub = 41.2 * (1 + 0.035 * np.exp(-t / 0.12))
+f_sub = 61.74 * (1 + 0.03 * np.exp(-t / 0.12))                # B1
 ph = 2 * np.pi * np.cumsum(f_sub) / SR
-sub = (np.sin(ph) + 0.28 * np.sin(2 * ph)) * env_exp(0.26, 0.035) * 0.075
+sub = (np.sin(ph) + 0.28 * np.sin(2 * ph)) * env_exp(0.30, 0.035) * 0.13
 add(sub, 0.0, 1.0)
 
 # ── H. 공간: 초기반사 + 대역별 감쇠가 다른 차가운 잔향 ───────────
