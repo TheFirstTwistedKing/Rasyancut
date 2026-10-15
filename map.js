@@ -158,7 +158,7 @@
     }
     g.globalAlpha = 1;
     
-    return { c, S, pts, cx, cy, hw: hwMax * 1.12, hh: hh * 1.02, big: !!o.big, vc: [[cx, cy]], vr: (o.big ? 0.27 : 0.2) * S };
+    return { c, S, pts, cx, cy, hw: hwMax * 1.12, hh: hh * 1.02, big: !!o.big, vc: [[cx, cy]], vr: (o.big ? 0.39 : 0.2) * S };
   }
 
   function makeGlow(rgb) {
@@ -406,7 +406,7 @@ void main(){
       x: p[0], y: p[1], sx: p[2], sy: p[3], scale: Math.max(p[2], p[3]), rot: (r() - 0.5) * 0.8, v: (r() * 12) | 0,
       phase: r() * 6.28, flip: r() < 0.5 ? -1 : 1,
     }));
-    specials = SPECIAL.map((s, i) => ({ ...s, idx: i, scale: 1.5, phase: i * 2.1, rot: -0.05 }));   // 쌍둥이의 틈은 어느 관문보다 크다
+    specials = SPECIAL.map((s, i) => ({ ...s, idx: i, scale: 1.85, phase: i * 2.1, rot: -0.05 }));   // 쌍둥이의 틈은 어느 관문보다 크다
   }
 
   async function prepare(onProgress) {
@@ -419,7 +419,7 @@ void main(){
       const rr = rng32(500 + i * 17);
       rifts.push(makeWound(1000 + i * 37, TINTS[i % 6], 512, { hw: 0.13 + rr() * 0.1, hh: 0.37 + rr() * 0.08, big: false })); await step();
     }
-    rifts.push(makeWound(777, { rim: NEON_PALE, glow: "238,255,107" }, 768, { hw: 0.28, hh: 0.37, big: true })); await step();
+    rifts.push(makeWound(777, { rim: NEON_PALE, glow: "238,255,107" }, 768, { hw: 0.31, hh: 0.38, big: true })); await step();
     await step();
     rifts.forEach((sp) => {                       // 멀리서 볼 때는 작게 줄여 둔 이미지를 쓴다(큰 이미지를 축소해 그리는 비용 제거)
       const half = (src, s) => { const c = mk(s, s); const g = c.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(src, 0, 0, s, s); return c; };
