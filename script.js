@@ -71,12 +71,15 @@
 
   // ── 세로로 긴 화면(모바일): 오른쪽 열매의 빛이 잘리지 않게 시야를 넓힌다 ──
   const svg = $("tree");
+  const baseVB = () => (window.innerWidth / window.innerHeight < 0.8
+    ? [-24, -30, 724, 870] : [10, -30, 660, 870]);
   const fitView = () => {
-    const tall = window.innerWidth / window.innerHeight < 0.8;
-    svg.setAttribute("viewBox", tall ? "-24 -30 724 870" : "10 -30 660 870");
+    if (camMode !== "idle") return;
+    svg.setAttribute("viewBox", baseVB().join(" "));
   };
+  let camMode = "idle";          // idle | zooming | open
   fitView();
-  window.addEventListener("resize", fitView);
+  window.addEventListener("resize", () => { fitView(); if (camMode === "open") onResizeOpen(); });
 
   // ── 등장: 뿌리에서 가지 끝까지 자라듯 드러남 ────────────────
   const VIEW_TOP = -30, VIEW_H = 870;
@@ -89,6 +92,7 @@
   const fruitGroup = $("fruit-group");
 
   const finish = () => {
+    $("tree-body").removeAttribute("mask");        // 등장이 끝나면 마스크는 필요 없다(렌더 비용 절감)
     revealRect.setAttribute("y", VIEW_TOP - travel);
     front.setAttribute("opacity", 0);
     label.classList.add("on");
@@ -150,11 +154,19 @@
 
   // ── 열매 상호작용 ───────────────────────────────────────────
   const fruit = $("fruit");
-  const activate = () => {
-    // 이동할 화면이 정해지면 data-target 에 주소를 넣으면 된다.
-    const target = fruit.dataset.target;
-    Transition.play(() => { if (target) window.location.href = target; });
+
+  // 열매 설명 데이터. 열매가 늘어나면 항목을 추가한다. (내용은 임시 문구)
+  //   target: 입장 시 이동할 주소 (없으면 전환 연출만 재생)
+  const FRUITS = {
+    "01": {
+      kicker: "FRUIT · 01",
+      title: "열매 01",
+      desc: "이 열매에 담긴 이야기의 설명이 들어갈 자리입니다. 열매마다 짧은 소개 글과 분위기를 적어 두면, 열매를 눌렀을 때 이 창에 나타납니다.",
+      target: null,
+    },
   };
+  const CURRENT = "01";
+
   // 부드러운 스프링: 올리면 천천히 부풀며 살짝 튀어 오르고, 떼면 출렁이며 제자리로
   const bounceG = fruit.querySelector(".bounce");
   const ripples = fruit.querySelector(".ripples");
@@ -207,13 +219,162 @@
   const hoverOut = () => { kick(1, 0, -0.1, 8); stopWaves(); };
   fruit.addEventListener("pointerenter", hoverIn);
   fruit.addEventListener("pointerleave", hoverOut);
-  fruit.addEventListener("focus", hoverIn);
+  fruit.addEventListener("focus", () => { if (fruit.matches(":focus-visible")) hoverIn(); });
   fruit.addEventListener("blur", hoverOut);
-  fruit.addEventListener("pointerdown", () => { kick(0.96, 1, -0.3, 10); spawnRipple(); });
-  fruit.addEventListener("pointerup", () => kick(1.14, -2, 0.2, -14));
+  fruit.addEventListener("pointerdown", () => { if (camMode === "idle") { kick(0.96, 1, -0.3, 10); spawnRipple(); } });
+  fruit.addEventListener("pointerup", () => { if (camMode === "idle") kick(1.14, -2, 0.2, -14); });
 
-  fruit.addEventListener("click", activate);
+  // ── 카메라: viewBox 를 애니메이션해 열매 쪽으로 확대 ─────────────
+  const stage = $("stage");
+  const panel = $("panel");
+  const sheetMQ = window.matchMedia("(max-width: 760px), (max-aspect-ratio: 1/1)");   // 모바일: 아래에서 올라오는 시트
+  const FRUIT = { x: F.x, y: F.y };
+  const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+  const boxSize = () => { const r = svg.getBoundingClientRect(); return { W: r.width, H: r.height }; };
+  const camFromVB = ([x, y, w, h]) => {
+    const { W, H } = boxSize();
+    return { s: Math.min(W / w, H / h), cx: x + w / 2, cy: y + h / 2 };
+  };
+  const applyCam = (c) => {
+    const { W, H } = boxSize();
+    const w = W / c.s, h = H / c.s;
+    svg.setAttribute("viewBox", `${(c.cx - w / 2).toFixed(3)} ${(c.cy - h / 2).toFixed(3)} ${w.toFixed(3)} ${h.toFixed(3)}`);
+  };
+  /** 열매가 화면의 (px, py) 에 보이도록 하는 카메라 */
+  const camFor = (s, px, py) => {
+    const { W, H } = boxSize();
+    return { s, cx: FRUIT.x - (px - W / 2) / s, cy: FRUIT.y - (py - H / 2) / s };
+  };
+  const zoomTarget = () => {
+    const { W, H } = boxSize();
+    const sheet = sheetMQ.matches;
+    const diameter = Math.min(Math.min(W, H) * (sheet ? 0.34 : 0.36), 320);
+    const s = diameter / 44;                                  // 링 지름 = 44 단위
+    return sheet ? { s, px: W * 0.5, py: H * 0.27 } : { s, px: W * 0.31, py: H * 0.5 };
+  };
+  const screenOf = (c) => {
+    const { W, H } = boxSize();
+    return { px: (FRUIT.x - c.cx) * c.s + W / 2, py: (FRUIT.y - c.cy) * c.s + H / 2 };
+  };
+
+  let camRaf = 0;
+  /** 현재 카메라 → 목표 카메라. 열매의 화면 위치는 직선, 배율은 지수적으로 보간해 매끄럽게 */
+  const flyTo = (target, ms) => new Promise((resolve) => {
+    cancelAnimationFrame(camRaf);
+    const from = camFromVB(svg.getAttribute("viewBox").split(" ").map(Number));
+    const p0 = screenOf(from);
+    const p1 = screenOf(target);
+    if (reduced || ms <= 0) { applyCam(target); resolve(); return; }
+    const t0 = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - t0) / ms);
+      const e = ease(t);
+      const s = from.s * Math.pow(target.s / from.s, e);
+      const px = p0.px + (p1.px - p0.px) * e;
+      const py = p0.py + (p1.py - p0.py) * e;
+      applyCam(camFor(s, px, py));
+      if (t < 1) camRaf = requestAnimationFrame(tick);
+      else { applyCam(target); resolve(); }
+    };
+    camRaf = requestAnimationFrame(tick);
+  });
+
+  // ── 설명창 ─────────────────────────────────────────────────
+  const el = { kicker: $("panel-kicker"), title: $("panel-title"), desc: $("panel-desc"),
+               enter: $("btn-enter"), back: $("btn-back"), close: $("panel-close") };
+  const typeInto = (node, text, perChar) => new Promise((resolve) => {
+    node.textContent = "";
+    node.dataset.cancel = "0";
+    if (reduced) { node.textContent = text; resolve(); return; }
+    const t0 = performance.now();
+    const tick = (now) => {
+      if (node.dataset.cancel === "1") { resolve(); return; }
+      const n = Math.min(text.length, Math.floor((now - t0) / perChar));
+      node.textContent = text.slice(0, n);
+      if (n < text.length) requestAnimationFrame(tick); else resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+  let fillId = 0;
+  const cancelTyping = () => {
+    fillId++;
+    [el.kicker, el.title, el.desc].forEach((n) => { n.dataset.cancel = "1"; });
+  };
+  const fillPanel = () => {
+    const f = FRUITS[CURRENT];
+    const id = ++fillId;
+    [el.kicker, el.title, el.desc].forEach((n) => { n.dataset.cancel = "0"; n.textContent = ""; });
+    const later = (ms, fn) => setTimeout(() => { if (id === fillId) fn(); }, reduced ? 0 : ms);
+    later(0,   () => typeInto(el.kicker, f.kicker, 28));
+    later(220, () => typeInto(el.title, f.title, 70));
+    later(520, () => typeInto(el.desc, f.desc, 16));
+  };
+
+  let busyCam = false;
+  const openFruit = async () => {
+    if (camMode !== "idle" || busyCam) return;
+    busyCam = true;
+    camMode = "zooming";
+    stage.classList.add("zoomed", "zooming");
+    startWaves();
+    const tgt = zoomTarget();
+    const done = flyTo(camFor(tgt.s, tgt.px, tgt.py), 1500);
+    // 확대가 어느 정도 진행되면 설명창이 나타난다
+    await wait(780);
+    panel.removeAttribute("inert");
+    panel.setAttribute("aria-hidden", "false");
+    panel.classList.add("open");
+    fillPanel();
+    await done;
+    stage.classList.remove("zooming");
+    stage.classList.add("deep");                  // 확대가 끝나면 나무는 완전히 숨겨 부드럽게 유지
+    camMode = "open";
+    busyCam = false;
+    el.enter.focus({ preventScroll: true });
+  };
+
+  const closeFruit = async () => {
+    if (camMode !== "open" || busyCam) return;
+    busyCam = true;
+    cancelTyping();
+    panel.classList.remove("open");
+    panel.setAttribute("aria-hidden", "true");
+    panel.setAttribute("inert", "");
+    stage.classList.remove("deep");
+    void stage.offsetWidth;                       // display:none 해제 직후 전환이 시작되도록
+    stage.classList.remove("zoomed");
+    stage.classList.add("zooming");
+    stopWaves();
+    camMode = "zooming";
+    const b = camFromVB(baseVB());
+    await flyTo(b, 1250);
+    camMode = "idle";
+    stage.classList.remove("zooming");
+    fitView();
+    busyCam = false;
+    fruit.focus({ preventScroll: true });
+  };
+
+  const onResizeOpen = () => {
+    const tgt = zoomTarget();
+    applyCam(camFor(tgt.s, tgt.px, tgt.py));
+  };
+
+  fruit.addEventListener("click", openFruit);
   fruit.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); }
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openFruit(); }
+  });
+  el.close.addEventListener("click", closeFruit);
+  el.back.addEventListener("click", closeFruit);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeFruit(); });
+  // 창 바깥(빈 곳)을 눌러도 닫힌다
+  stage.addEventListener("click", (e) => {
+    if (camMode === "open" && !panel.contains(e.target) && !fruit.contains(e.target)) closeFruit();
+  });
+  // 입장: 전환 연출(아이콘 포함) 후 이동
+  el.enter.addEventListener("click", () => {
+    const target = FRUITS[CURRENT].target;
+    Transition.play(() => { if (target) window.location.href = target; });
   });
 })();
