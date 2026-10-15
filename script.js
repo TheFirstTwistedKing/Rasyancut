@@ -4,7 +4,9 @@
   const D = window.TREE_DATA;
   const $ = (id) => document.getElementById(id);
   const NS = "http://www.w3.org/2000/svg";
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // OS의 "동작 줄이기" 설정과 무관하게 애니메이션을 항상 재생한다.
+  // 필요하면 <html data-reduce-motion="true"> 로 직접 끌 수 있다.
+  const reduced = document.documentElement.dataset.reduceMotion === "true";
 
   if (!D) return;
 

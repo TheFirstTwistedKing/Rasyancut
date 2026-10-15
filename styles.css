@@ -250,7 +250,12 @@ body {
   .stage { padding-top: 8px; padding-bottom: 8px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition-duration: .001s !important; }
-  .dust, .ripples { display: none; }
+:root[data-reduce-motion="true"] *,
+:root[data-reduce-motion="true"] *::before,
+:root[data-reduce-motion="true"] *::after {
+  animation-duration: .001s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001s !important;
 }
+:root[data-reduce-motion="true"] .dust,
+:root[data-reduce-motion="true"] .ripples { display: none; }
