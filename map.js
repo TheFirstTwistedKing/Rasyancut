@@ -472,6 +472,7 @@ void main(){
     el.home = document.getElementById("map-home");
     el.boost = document.getElementById("boost");
     el.burn = document.getElementById("burn-canvas");
+    el.fire = document.getElementById("fire-canvas");
     el.toast = document.getElementById("map-toast");
   };
 
@@ -657,7 +658,7 @@ void main(){
       for (let y = Math.ceil(vy0 / step) * step; y <= vy1; y += step) { ctx.moveTo(vx0, y); ctx.lineTo(vx1, y); }
       ctx.stroke();
     }
-    drawFireRing(t);
+    if (!fireGL) drawFireRing(t);
   }
 
   /** 맵의 경계: 불타는 고리. 경계 밖은 검붉게 가라앉고, 불길이 혀처럼 일렁이며 불씨가 날린다 */
@@ -1021,6 +1022,7 @@ void main(){
     // 경계 밖 사선 무늬
     if (!SKIP.has('hud')) { drawAxisLabels(); drawEdgeMarkers(t); }
     if (!SKIP.has('mini')) drawMini(t);
+    updateFire(t);
     updateBurn(now, Math.hypot(cam.x - CX, cam.y - CY));
     hudT += dt;
     if (hudT > 0.12) {
@@ -1028,6 +1030,141 @@ void main(){
       const dC = Math.hypot(cam.x - CX, cam.y - CY), sg = (v) => `${v < 0 ? "-" : "+"}${Math.abs(Math.round(v)).toString().padStart(5, "0")}`;
       el.coords.textContent = `X ${sg(cam.x)}  Y ${sg(cam.y)}  ·  성역까지 ${(dC / 1000).toFixed(1)}k  ·  경계까지 ${Math.max(0, (R_MAP - dC) / 1000).toFixed(1)}k`;
     }
+  }
+
+    // ───────────────────────── 맵 경계의 불길 (WebGL2) ─────────────────────────
+  // 경계(원) 둘레를 따라 각도 방향으로 끊김 없이 이어지는(주기적) 노이즈로 불꽃의 혀·연기·불씨·갈라진 용암 땅을 그린다.
+  // 난수는 정수 해시라서 아주 큰 좌표(둘레 60만 단위)에서도 깨지지 않는다.
+  const FIRE_VS = "#version 300 es\nin vec2 aPos; void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }";
+  const FIRE_FS = `#version 300 es
+precision highp float; precision highp int;
+uniform vec2 uRes, uView, uCam;
+uniform float uZ, uT, uR, uN, uH;
+out vec4 oc;
+uint ih(uvec2 p){ uint h = p.x * 1597334673u ^ p.y * 3812015801u; h ^= h >> 15; h *= 2246822519u; h ^= h >> 13; h *= 3266489917u; h ^= h >> 16; return h; }
+float hv(ivec2 c){ return float(ih(uvec2(c)) & 16777215u) / 16777216.0; }
+float pn(vec2 p, float per){            // x 방향으로 per 칸마다 되풀이되는 값 노이즈
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  int x0 = int(mod(i.x, per)), x1 = int(mod(i.x + 1.0, per)), y0 = int(i.y), y1 = y0 + 1;
+  return mix(mix(hv(ivec2(x0, y0)), hv(ivec2(x1, y0)), f.x), mix(hv(ivec2(x0, y1)), hv(ivec2(x1, y1)), f.x), f.y);
+}
+float fbmP(vec2 p, float per){ float a = 0.5, s = 0.0; for (int k = 0; k < 5; k++){ s += a * pn(p, per); p = vec2(p.x * 2.0, p.y * 2.0 + 3.7); per *= 2.0; a *= 0.5; } return s; }
+float fbm3(vec2 p, float per){ float a = 0.5, s = 0.0; for (int k = 0; k < 3; k++){ s += a * pn(p, per); p = vec2(p.x * 2.0, p.y * 2.0 + 3.7); per *= 2.0; a *= 0.5; } return s; }
+vec3 fireCol(float f){
+  vec3 c = vec3(0.0);
+  c = mix(c, vec3(0.42, 0.025, 0.0), smoothstep(0.0, 0.26, f));
+  c = mix(c, vec3(0.98, 0.30, 0.02), smoothstep(0.20, 0.55, f));
+  c = mix(c, vec3(1.0, 0.76, 0.20), smoothstep(0.48, 0.88, f));
+  c = mix(c, vec3(1.0, 0.96, 0.76), smoothstep(0.84, 1.30, f));
+  return c;
+}
+// 위로(경계 바깥으로) 솟는 불씨
+float ember(float x, float per, float s, float cell, float seed, float rad){
+  vec2 g = vec2(x * (251.0 / cell), s / cell - uT * 0.55);
+  vec2 id = floor(g), fr = fract(g);
+  float pp = per * (251.0 / cell);
+  ivec2 c = ivec2(int(mod(id.x, pp)), int(id.y) + int(seed));
+  float h = hv(c); if (h < 0.78) return 0.0;
+  vec2 off = vec2(hv(c + ivec2(7, 3)), hv(c + ivec2(2, 9))) * 0.6 + 0.2;
+  off.x += 0.16 * sin(uT * 1.7 + h * 40.0);
+  float d = length(fr - off);
+  float tw = 0.55 + 0.45 * sin(uT * (3.0 + h * 5.0) + h * 60.0);
+  return smoothstep(rad, 0.0, d) * tw;
+}
+void main(){
+  vec2 frag = gl_FragCoord.xy / uRes;
+  vec2 scr = (frag - 0.5) * uView;
+  vec2 w = uCam + vec2(scr.x, -scr.y) / uZ;
+  float r = length(w), s = r - uR;                         // s > 0 : 경계 바깥
+  if (s < -uH * 3.2) { oc = vec4(0.0); return; }
+  float ang = atan(w.y, w.x);
+  float x = (ang / 6.28318530718 + 0.5) * uN;
+  float flick = 0.9 + 0.1 * sin(uT * 3.1) + 0.05 * sin(uT * 8.7);
+
+  // 혀마다 다른 높이
+  float hl = 0.6 * pn(vec2(x / 16.0, uT * 0.22 + 7.0), uN / 16.0) + 0.4 * pn(vec2(x / 6.0, uT * 0.5 + 2.0), uN / 6.0);
+  float Hloc = uH * (0.6 + 1.1 * hl);
+  // 위로 솟으며 소용돌이치는 불꽃결 (도메인 워프)
+  vec2 q = vec2(x, (s - uT * 260.0) / 420.0);
+  vec2 wq = vec2(fbm3(q * 0.5, uN * 0.5), fbm3(q * 0.5 + vec2(0.0, 5.2), uN * 0.5)) - 0.5;
+  float d = fbmP(q + 1.8 * wq, uN);
+
+  float fall = s >= 0.0 ? 1.0 - s / Hloc : exp(s / (0.22 * uH));
+  float dd = clamp((d - 0.5) * 2.4 + 0.5, 0.0, 1.0);          // 대비를 키워 불꽃의 혀가 갈라지게
+  float I = max(dd + fall * 1.15 - 0.74, 0.0) * 1.35;
+  if (s < 0.0) I *= clamp(fall * 2.2, 0.0, 1.0);
+  float core = exp(-pow(s / max(11.0, 2.6 / uZ), 2.0));        // 경계선 자체의 달아오른 심지
+  I = I + core * (0.4 + 0.5 * d);
+  I *= flick;
+
+  vec3 col = vec3(0.0); float a = 0.0;
+  // ① 경계 바깥 땅: 검붉게 식은 땅 + 갈라진 틈으로 비치는 용암빛
+  if (s > 0.0) {
+    vec2 c1 = w / 1500.0, c2 = w / 380.0;
+    float rg = 1.0 - abs(2.0 * fbm3(c1, 4096.0) - 1.0), rg2 = 1.0 - abs(2.0 * fbm3(c2, 4096.0) - 1.0);
+    float crack = smoothstep(0.90, 0.985, rg) + 0.7 * smoothstep(0.93, 0.99, rg2);
+    float near = 0.18 + 0.82 * exp(-s / 3500.0);
+    vec3 ground = vec3(0.055, 0.009, 0.007);
+    col = ground * 0.9; a = 0.9;
+    col += vec3(1.0, 0.28, 0.04) * crack * near * (0.6 + 0.4 * sin(uT * 1.6 + rg * 9.0)) * 0.4;
+  }
+  // ② 연기: 불길 위로 올라가 흩어진다
+  float sm = smoothstep(0.38, 0.78, fbmP(vec2(x * 0.35, (s - uT * 130.0) / 900.0) + vec2(0.0, 9.1), uN * 0.35));
+  float smA = sm * smoothstep(0.25 * uH, 0.9 * uH, s) * exp(-max(s, 0.0) / (3.2 * uH)) * 0.6;
+  vec3 smC = vec3(0.045, 0.028, 0.026) + vec3(0.55, 0.17, 0.05) * exp(-max(s, 0.0) / uH) * 0.18;
+  col = col * (1.0 - smA) + smC * smA; a = a + smA * (1.0 - a);
+  // ③ 불꽃
+  float fa = smoothstep(0.03, 0.42, I);
+  vec3 fc = fireCol(I) * (0.78 + 0.5 * d);
+  col = col * (1.0 - fa) + fc * fa; a = a + fa * (1.0 - a);
+  // ④ 번지는 빛 (경계 안쪽 맵에도 주홍빛이 번진다)
+  float gl = exp(-abs(s) / (0.9 * uH)) * flick;
+  col += vec3(1.0, 0.36, 0.07) * gl * 0.20; a = max(a, gl * 0.05);
+  // ⑤ 불씨
+  float e = ember(x, uN, s, 251.0, 1.0, max(0.012, 1.7 / (251.0 * uZ)))
+          + ember(x, uN, s, 125.0, 5.0, max(0.016, 1.5 / (125.0 * uZ)))
+          + 0.8 * ember(x, uN, s, 520.0, 9.0, max(0.010, 2.2 / (520.0 * uZ)));
+  float eF = smoothstep(-0.2 * uH, 0.1 * uH, s) * (1.0 - smoothstep(0.8 * uH, 2.6 * uH, s));
+  col += vec3(1.0, 0.62, 0.18) * e * eF * 1.5; a = max(a, clamp(e * eF, 0.0, 1.0));
+  // 부드러운 어깨 + 디더
+  vec3 hi = max(col - 0.85, 0.0); col = min(col, 0.85) + 0.15 * (1.0 - exp(-hi * 5.0));
+  col += (float(ih(uvec2(gl_FragCoord.xy) + uvec2(uint(uT * 60.0), 3u)) & 255u) / 255.0 - 0.5) / 255.0;
+  oc = vec4(max(col, 0.0), clamp(a, 0.0, 1.0));
+}`;
+  let fireGL = null;
+  function initFire() {
+    try {
+      const gl = el.fire.getContext("webgl2", { alpha: true, premultipliedAlpha: true, antialias: false });
+      if (!gl) throw new Error("no webgl2");
+      const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+      const prog = gl.createProgram();
+      gl.attachShader(prog, sh(gl.VERTEX_SHADER, FIRE_VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FIRE_FS));
+      gl.bindAttribLocation(prog, 0, "aPos");
+      gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      gl.useProgram(prog);
+      const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+      const U = {}; ["uRes", "uView", "uCam", "uZ", "uT", "uR", "uN", "uH"].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
+      fireGL = { gl, U };
+    } catch (e) { fireGL = null; console.warn("경계 불길(WebGL2) 사용 불가 → 2D로 대체:", e.message); }
+  }
+  /** 경계가 화면에 걸릴 때만 그린다 (해상도는 0.8배) */
+  function updateFire(t) {
+    if (!fireGL) return;
+    const z = cam.z, dC = Math.hypot(cam.x - CX, cam.y - CY), viewR = Math.hypot(cw, ch) / 2 / z;
+    const H = Math.max(520, 60 / z);
+    const vis = Math.abs(dC - R_MAP) < viewR + H * 3.2 + 400;
+    el.fire.classList.toggle("on", vis);
+    if (!vis) return;
+    const w = Math.max(2, Math.floor(cw * 0.8)), h = Math.max(2, Math.floor(ch * 0.8));
+    if (el.fire.width !== w || el.fire.height !== h) { el.fire.width = w; el.fire.height = h; }
+    const { gl, U } = fireGL;
+    gl.viewport(0, 0, w, h);
+    gl.uniform2f(U.uRes, w, h); gl.uniform2f(U.uView, cw, ch); gl.uniform2f(U.uCam, cam.x - CX, cam.y - CY);
+    gl.uniform1f(U.uZ, z); gl.uniform1f(U.uT, t); gl.uniform1f(U.uR, R_MAP); gl.uniform1f(U.uN, 2400); gl.uniform1f(U.uH, H);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
   // ───────────────────────── 맵 밖으로 나가면: 불타오르고 → 재가 되고 → 성역 한가운데서 다시 태어난다 ─────────────────────────
@@ -1062,33 +1199,67 @@ float flakes(vec2 uv, float t, float dens, float dir){
 void main(){
   vec2 uv = gl_FragCoord.xy / uRes;
   float asp = uRes.x / uRes.y;
+  vec2 pp = vec2(uv.x * asp, uv.y);
   vec2 p = (uv - 0.5) * vec2(asp, 1.0) * 2.0;
-  float ed = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
-  vec2 q = vec2(uv.x * asp * 4.6, uv.y * 2.3 - uTime * 2.1);      // 세로로 길게 솟는 불꽃결
-  float n = fbm(q + vec2(0.0, fbm(q * 1.6 + uTime * 0.35) * 1.3));      // 위로 솟는 불꽃의 일렁임
+  float ed = min(min(uv.x * asp, (1.0 - uv.x) * asp), min(uv.y, 1.0 - uv.y));
+  vec2 q = vec2(uv.x * asp * 4.6, uv.y * 2.3 - uTime * 2.1);
+  float n = fbm(q + vec2(0.0, fbm(q * 1.6 + uTime * 0.35) * 1.3));
 
   // 경계에 다가갈 때: 화면 가장자리가 달아오른다
-  float hv = uHeat * smoothstep(0.11 + 0.06 * n, 0.0, ed + (n - 0.5) * 0.06);
-  vec3 heatC = fireCol(clamp(hv * 0.8 + 0.12, 0.0, 0.72)) * hv * 0.8;
+  float hv = uHeat * smoothstep(0.075 + 0.05 * n, 0.0, ed + (n - 0.5) * 0.05);
+  vec3 heatC = fireCol(clamp(hv * 0.8 + 0.12, 0.0, 0.72)) * hv * 0.3;
 
-  // 본 불길: 가장자리에서 안쪽으로 번져 오른다
-  float F = uFire * 1.35 - ed * 1.45 + (n - 0.42) * 0.55;
-  float fa = smoothstep(0.0, 0.2, F) * step(0.0001, uFire);
-  vec3 fc = fireCol(clamp(F * 1.25, 0.0, 1.25) + (n - 0.5) * 0.12) * (0.75 + 0.5 * n);
-  float charK = smoothstep(0.55, 1.1, F);
-  fc = mix(fc, vec3(0.05, 0.01, 0.0) + fc * 0.25, charK * 0.65 * smoothstep(0.0, 1.0, uAsh + 0.3));   // 오래 탄 곳은 숯처럼 어두워진다
+  // ── 종이가 타는 화면 ─────────────────────────────────────────────
+  // 점화 시각 T: 가장자리에서 안쪽으로, 종이 섬유·두께 얼룩 때문에 들쭉날쭉 번진다 (작을수록 먼저 탄다)
+  float edn = ed / (0.5 * min(asp, 1.0));
+  float nLow = fbm(pp * 2.2 + 3.1), nMid = fbm(pp * 7.0 + 11.0), nHi = fbm(pp * 26.0 + 5.0);
+  float fiber = vnoise(vec2(pp.x * 90.0, pp.y * 6.0));
+  float T = edn * 0.95 + (nLow - 0.5) * 0.55 + (nMid - 0.5) * 0.16 + (nHi - 0.5) * 0.05 + (fiber - 0.5) * 0.012;
+  float act = smoothstep(0.0, 0.04, uFire);
+  float F = uFire * 1.62 - 0.12;                    // 불붙은 선의 위치
+  float dt = F - T;                                 // > 0 : 이미 탄 곳, < 0 : 아직 타지 않은 곳
+  float burnt = smoothstep(-0.004, 0.004, dt) * act;
+  float behind = max(dt, 0.0), ahead = max(-dt, 0.0);
+  float fadeE = 1.0 - uAsh;
 
-  // 재: 불이 사그라들며 회색 재로 덮이고 재가 흩날린다
-  vec3 ash = vec3(0.10, 0.095, 0.095) + vec3(0.12, 0.115, 0.11) * n * n + vec3(0.22) * flakes(uv * vec2(asp, 1.0), uTime, 0.86, -1.0) * uAsh;
-  float fireFade = 1.0 - uAsh;
-  float aF = fa * fireFade;
-  float ashA = clamp(uAsh * 1.2, 0.0, 1.0) * clamp(uFire * 1.2, 0.0, 1.0);
-  vec3 outc = ash * ashA * (1.0 - aF) + fc * aF + heatC * (1.0 - aF);
-  float outa = clamp(aF + ashA * (1.0 - aF) + hv * 0.6 * (1.0 - aF), 0.0, 1.0);
-  float emb = flakes(uv * vec2(asp, 1.0), uTime, 0.88, 1.0) * uFire * (1.0 - uAsh);       // 솟는 불씨
-  outc += vec3(1.0, 0.55, 0.12) * emb * 1.4; outa = max(outa, emb);
+  // 탄 자리: 선 바로 뒤는 눈부시게 달아오른 숯, 더 뒤는 검은 숯 속에서 불씨가 벌레처럼 꿈틀댄다
+  float pat = smoothstep(0.38, 0.85, fbm(pp * 36.0 + vec2(uTime * 0.3, -uTime * 0.9)));
+  float band = exp(-behind / 0.014);
+  float tail = exp(-behind / 0.075) * pat;
+  float glow = (band * 1.1 + tail * 0.85) * fadeE;
+  vec3 emberC = fireCol(clamp(glow, 0.0, 1.3)) * glow;
+  vec3 black = vec3(0.012, 0.009, 0.009) + vec3(0.025) * nMid * nMid;
+  vec3 cb = black + emberC;
+  float fall = flakes(pp, uTime, 0.90, -1.0) * (0.35 + 0.65 * burnt);
+  cb += vec3(0.30, 0.27, 0.25) * fall * smoothstep(0.0, 0.25, behind) * 0.5 * act;      // 흩날리는 재 조각
 
-  // 다시 태어남: 중앙에서 빛이 퍼지며 재를 걷어낸다
+  // 아직 안 탄 곳: 열을 먹어 누렇게 그을리고, 불붙기 직전엔 까맣게 말려 들어간다
+  float scor = smoothstep(0.17, 0.0, ahead) * act;
+  float chr = smoothstep(0.03, 0.0, ahead) * act;
+  float aS = clamp(scor * 0.6 * (0.6 + 0.4 * nMid), 0.0, 1.0);
+  vec3 c = vec3(0.17, 0.075, 0.02) * aS; float a = aS;
+  float aC = clamp(chr * 0.85, 0.0, 1.0);
+  c = c * (1.0 - aC) + vec3(0.03, 0.012, 0.004) * aC; a = a + aC * (1.0 - a);
+  // 불붙은 선 앞쪽에서 일렁이는 작은 불꽃
+  float fq = fbm(vec2(pp.x * 13.0, pp.y * 6.0 - uTime * 3.2) + fbm(pp * 9.0 + uTime * 0.6) * 1.2);
+  float fl = exp(-ahead / (0.016 + 0.04 * fq)) * (0.4 + 1.3 * fq) * (1.0 - burnt) * act * fadeE;
+  c += fireCol(clamp(fl, 0.0, 1.3)) * fl * 1.3; a = max(a, clamp(fl, 0.0, 1.0));
+  // 열을 받아 가장자리부터 갈색·주황으로 달아오르는 종이
+  float warm = exp(-ahead / 0.035) * (0.55 + 0.45 * nMid) * act * fadeE * (1.0 - burnt);
+  c += vec3(0.55, 0.20, 0.04) * warm * 0.42; a = max(a, warm * 0.35);
+
+  c = mix(c, cb, burnt); a = mix(a, 1.0, burnt);
+  // 불붙은 선 자체: 가늘고 하얗게 타는 불씨 줄
+  float line = exp(-pow(dt / 0.007, 2.0)) * act * fadeE;
+  c += vec3(1.0, 0.86, 0.5) * line * 1.3; a = max(a, clamp(line, 0.0, 1.0));
+  // 선 근처에서 튀어 오르는 불똥
+  float sp = flakes(pp * 1.3 + 4.0, uTime, 0.90, 1.0) * exp(-abs(dt) / 0.14) * act * fadeE;
+  c += vec3(1.0, 0.6, 0.15) * sp * 1.4; a = max(a, clamp(sp, 0.0, 1.0));
+
+  vec3 outc = c + heatC * (1.0 - a);
+  float outa = clamp(a + hv * 0.6 * (1.0 - a), 0.0, 1.0);
+
+  // 다시 태어남: 중앙에서 빛이 퍼지며 검은 화면을 걷어낸다
   float rr = length(p);
   float edgeN = (n - 0.5) * 0.35;
   float Rv = uReborn * 2.7;
@@ -1182,7 +1353,7 @@ void main(){
         gr.addColorStop(0, "rgba(255,80,10,0)"); gr.addColorStop(0.55, `rgba(255,110,20,${0.55 * hot})`); gr.addColorStop(1, `rgba(255,220,120,${0.95 * hot})`);
         g.fillStyle = gr; g.fillRect(0, 0, w, h);
       }
-      if (ash > 0) { g.fillStyle = `rgba(30,28,28,${Math.min(1, ash * 1.2)})`; g.fillRect(0, 0, w, h); }
+      if (ash > 0) { g.fillStyle = `rgba(6,5,5,${Math.min(1, ash * 1.6)})`; g.fillRect(0, 0, w, h); }
       if (reb > 0) {
         g.save(); g.globalCompositeOperation = "destination-out";
         const rr = reb * R * 1.05; const gr = g.createRadialGradient(w / 2, h / 2, Math.max(0, rr - R * 0.2), w / 2, h / 2, rr + 1);
@@ -1197,6 +1368,7 @@ void main(){
     getEls();
     ctx = el.canvas.getContext("2d", { alpha: false });
     bindInput();
+    initFire();
     initBurn();
   }
 
@@ -1215,7 +1387,7 @@ void main(){
     open = false; cancelAnimationFrame(raf);
     el.screen.classList.remove("open"); el.screen.setAttribute("inert", ""); el.screen.setAttribute("aria-hidden", "true");
     document.body.classList.remove("map-open");
-    keys.clear(); pointers.clear(); dragging = false; burn = null; el.burn.classList.remove("on"); el.toast.classList.remove("on"); el.screen.classList.remove("burning");
+    keys.clear(); pointers.clear(); dragging = false; burn = null; el.burn.classList.remove("on"); el.fire.classList.remove("on"); el.toast.classList.remove("on"); el.screen.classList.remove("burning");
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
