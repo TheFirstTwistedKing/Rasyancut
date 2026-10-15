@@ -78,11 +78,12 @@
       <stop offset="1"   stop-color="${p.c1}" stop-opacity="0"/>
     </radialGradient>`;
 
+  const FRUIT_SCALE = 0.8;                       // 나무에 달린 열매의 크기 (확대했을 때의 크기는 그대로)
   const STAR = "M0 -50Q8.5 -8.5 50 0Q8.5 8.5 0 50Q-8.5 8.5 -50 0Q-8.5 -8.5 0 -50Z";
   const unitHTML = ({ id, pal: p, phase, pos }) => `
     <g class="fruit-unit" data-id="${id}" style="--f1:${p.c1};--f2:${p.c2};--f3:${p.c3};--ph:${phase}s">
       <g class="stem"></g>
-      <g class="fruit" role="button" tabindex="0" aria-label="세피로트의 열매 ${id}" transform="translate(${pos.x} ${pos.y})">
+      <g class="fruit" role="button" tabindex="0" aria-label="세피로트의 열매 ${id}" transform="translate(${pos.x} ${pos.y}) scale(${FRUIT_SCALE})">
         <g class="ripples" aria-hidden="true"></g>
         <g class="bounce">
           <g class="bloom" aria-hidden="true"><circle r="160" fill="url(#bloom-${id})"/></g>
@@ -127,7 +128,7 @@
     const unit = $("fruit-group").querySelector(`.fruit-unit[data-id="${f.id}"]`);
     f.unit = unit; f.node = unit.querySelector(".fruit");
     const { S, pos: F, pal: p } = f;
-    const stemD = `M${S.x} ${S.y - 3} C${S.x + 1} ${S.y + 26} ${F.x + 6} ${F.y - 46} ${F.x} ${F.y - 22}`;
+    const stemD = `M${S.x} ${S.y - 3} C${S.x + 1} ${S.y + 26} ${F.x + 6} ${F.y - 46 * FRUIT_SCALE} ${F.x} ${F.y - 22 * FRUIT_SCALE}`;
     [
       [p.c1, 5, ".45", "url(#glow-soft)"],
       [p.c2, 2.4, "1", null],
@@ -471,7 +472,7 @@
     const { W, H } = boxSize();
     const sheet = sheetMQ.matches;
     const diameter = Math.min(Math.min(W, H) * (sheet ? 0.34 : 0.36), 320);
-    const s = diameter / 44;                                  // 링 지름 = 44 단위
+    const s = diameter / (44 * FRUIT_SCALE);                  // 링 지름 = 44 단위 × 열매 크기
     return sheet ? { s, px: W * 0.5, py: H * 0.27 } : { s, px: W * 0.31, py: H * 0.5 };
   };
   const screenOf = (c) => {
