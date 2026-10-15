@@ -156,7 +156,7 @@
   // 지연 없이 재생되도록 Web Audio 로 미리 디코딩해 둔다. (브라우저 정책상 첫 클릭/키 입력 뒤에 준비됨)
   // fetch 가 막히는 환경(파일을 직접 연 경우 등)에서는 일반 Audio 로 대신 재생한다.
   const Sfx = (() => {
-    const URL_ = "assets/sfx/relic-awaken.wav";
+    const URL_ = "assets/sfx/relic-awaken.wav?v=2";   // 소리를 바꾸면 v 숫자를 올려 캐시를 갱신
     let ctx = null, buf = null, raw = null;
     const fallback = new Audio(URL_);
     fallback.preload = "auto";
