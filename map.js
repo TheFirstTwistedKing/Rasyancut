@@ -768,6 +768,21 @@ void main(){
         ctx.globalAlpha = a; ctx.drawImage(tex, cx - w / 2, yh - L, w, L);
       }
     };
+    // 거대한 빛기둥: 폭 수천·길이 수만 단위로 아주 느리게 흘러내린다 (듬성듬성)
+    const Wg = 9000, Pg = 30000, g0 = Math.floor(vx0 / Wg) - 1, g1 = Math.floor(vx1 / Wg) + 1;
+    for (let i = g0; i <= g1; i++) {
+      if (hash2(i, 9, 501) > 0.8) continue;
+      const hx = hash2(i, 9, 502), hw = hash2(i, 9, 503), hl = hash2(i, 9, 504), hv = hash2(i, 9, 505), hp = hash2(i, 9, 506), ha = hash2(i, 9, 507);
+      const cx = (i + hx) * Wg, w = Math.max(3400 + 5200 * hw, 3 / z), L = 14000 + 13000 * hl, Pn = Pg * (0.9 + 0.5 * hp);
+      const base = (((t * (55 + 60 * hv) + hp * 12011) % Pn) + Pn) % Pn;
+      if (Math.abs(cx) > R_MAP + 1500) continue;
+      ctx.globalAlpha = (0.32 + 0.22 * ha) * (0.8 + 0.2 * Math.sin(t * 0.3 + hp * 30));
+      for (let k = Math.ceil((vy0 - base) / Pn); k <= Math.floor((vy1 + L - base) / Pn); k++) {
+        const yh = base + k * Pn;
+        if (Math.hypot(cx, yh) > R_MAP + 2000) continue;
+        ctx.drawImage(atmosTex.streak, cx - w / 2, yh - L, w, L);
+      }
+    }
     for (let i = i0; i <= i1; i++) {
       draw(atmosTex.streak, i, 0, 70, 110, 0.9, 170, 190, 0.5, 0.45, 301);          // 가는 빛줄기 (칸마다 하나)
       if (!far) draw(atmosTex.streak, i, 1, 140, 200, 1.2, 120, 150, 0.42, 0.4, 311);   // 조금 굵고 긴 빛줄기
