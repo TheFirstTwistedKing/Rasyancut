@@ -13,13 +13,21 @@
   $("tree-bark").setAttribute("d", D.bark);
   $("tree-knots").setAttribute("d", D.knots);
 
-  // ── 기둥 위 세로 라틴어 (아래→위로 읽음) ─────────────────────
+  // ── 기둥 위 세로 라틴어: 글자는 눕히지 않고 똑바로, 위에서 아래로 쌓는다 ──
   const trunkText = $("trunk-text");
-  const TRUNK_X = 297, TRUNK_Y = 586, TRUNK_LEN = 226;
-  trunkText.setAttribute("transform", `translate(${TRUNK_X} ${TRUNK_Y}) rotate(-90)`);
-  trunkText.setAttribute("textLength", TRUNK_LEN);
-  trunkText.setAttribute("lengthAdjust", "spacing");
-  trunkText.setAttribute("dy", "6");
+  const WORDS = ["ARBOR", "SEPHIROTH"];
+  const TRUNK_X = 297, PITCH = 17;
+  const letters = [...WORDS[0], null, ...WORDS[1]];         // null = 단어 사이 빈칸
+  const startY = 586 - ((letters.length - 1) * PITCH) / 2;
+  letters.forEach((ch, i) => {
+    if (ch === null) return;
+    const t = document.createElementNS(NS, "tspan");
+    t.setAttribute("x", TRUNK_X);
+    t.setAttribute("y", (startY + i * PITCH).toFixed(1));
+    t.textContent = ch;
+    trunkText.appendChild(t);
+  });
+  trunkText.setAttribute("aria-label", WORDS.join(" "));
 
   // ── 열매: 오른쪽 긴 가지 끝쪽 아랫면에서 늘어뜨림 ────────────
   const S = { x: D.fruit.stemX, y: D.fruit.stemY };
