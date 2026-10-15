@@ -17,6 +17,18 @@
     "loading-6.webp",
     "loading-7.webp",
     "loading-8.webp",
+    "loading-9.webp",
+    "loading-10.webp",
+    "loading-11.webp",
+    "loading-12.webp",
+    "loading-13.webp",
+    "loading-14.webp",
+    "loading-15.webp",
+    "loading-16.webp",
+    "loading-17.webp",
+    "loading-18.webp",
+    "loading-19.webp",
+    "loading-20.webp",
   ];
   const DIR = "assets/loading/";
   const FADE_IN = 800, FADE_OUT = 900;
