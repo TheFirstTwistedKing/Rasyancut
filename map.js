@@ -180,6 +180,85 @@
     return c;
   }
 
+
+  // ───────────────────────── 소용돌이(WebGL 셰이더) ─────────────────────────
+  // 터널 좌표(깊이 = 1/r)로 중심을 향해 빨려 드는 흐름을 만들고, 도메인 워핑 fbm 난류 + 가는 빛 가닥 + 뜨거운 중심으로 실제 가스 소용돌이처럼 그린다.
+  const VORTEX_VS = "attribute vec2 aPos; varying vec2 vUv; void main(){ vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }";
+  const VORTEX_FS = `
+precision highp float;
+varying vec2 vUv;
+uniform float uTime, uDir, uSeed;
+float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vnoise(vec2 p, float per){
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  float a = hash(vec2(mod(i.x, per), i.y)), b = hash(vec2(mod(i.x + 1.0, per), i.y));
+  float c = hash(vec2(mod(i.x, per), i.y + 1.0)), d = hash(vec2(mod(i.x + 1.0, per), i.y + 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float fbm(vec2 p, float per){
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++){ v += a * vnoise(p, per); p = p * 2.0 + 3.7; per *= 2.0; a *= 0.5; }
+  return v;
+}
+void main(){
+  vec2 p = vUv * 2.0 - 1.0;
+  float r = length(p), ang = atan(p.y, p.x);
+  float u = ang / 6.2831853 + 0.5;
+  float depth = 0.5 / (r + 0.07);                       // 터널 깊이: 중심에 가까울수록 깊다
+  float flow = uTime * 0.5 * uDir;
+  float twist = uTime * 0.16 * uDir + depth * 0.26;      // 깊을수록 더 감기는 나선
+  float uu = u + twist;
+  const float P = 6.0;
+  vec2 q = vec2(uu * P, depth * 1.25 - flow);
+  float w1 = fbm(q + vec2(uSeed, 0.0), P);
+  float w2 = fbm(vec2(q.x + w1 * 2.4, q.y + w1 * 1.6) + vec2(5.2, 1.3 + uSeed), P);
+  // 거대한 나선 팔(세 갈래) 위에 난류를 얹는다
+  float arms = 0.5 + 0.5 * sin((uu * 3.0 + depth * 0.9 + w2 * 1.7) * 6.2831853);
+  float dens = smoothstep(0.30, 0.86, arms * 0.6 + w2 * 0.64);
+  // 가는 빛 가닥(능선 노이즈)
+  float rid = 1.0 - abs(2.0 * fbm(vec2(q.x * 2.0 + w2 * 3.0, q.y * 1.6 - flow * 0.4), P * 2.0) - 1.0);
+  rid = pow(rid, 5.0);
+  float glow = 1.0 / (1.0 + r * r * 16.0);
+  // 한쪽이 더 밝은(도플러) 비대칭 + 안쪽일수록 밝게
+  float side = 0.82 + 0.3 * sin(ang * 1.0 + uTime * 0.3 * uDir + uSeed);
+  float inten = (dens * (0.42 + 1.15 * rid) + dens * dens * 0.55) * (0.3 + 1.5 * glow) * side;
+  inten *= smoothstep(1.22, 0.3, r);                      // 바깥은 어둠으로
+  inten = pow(max(inten, 0.0), 1.18);                    // 대비: 어두운 결은 진짜 검정으로
+  vec3 col = vec3(0.0);
+  col = mix(col, vec3(0.55, 0.46, 0.04), smoothstep(0.06, 0.4, inten));
+  col = mix(col, vec3(0.95, 1.0, 0.42), smoothstep(0.28, 0.8, inten));
+  col = mix(col, vec3(1.0, 0.99, 0.86), smoothstep(0.85, 1.5, inten));
+  col += vec3(1.0, 0.97, 0.78) * exp(-r * 8.0) * 1.0;     // 뜨거운 중심부
+  col += vec3(1.0) * exp(-r * 30.0) * 2.0;                // 한가운데 백열
+  gl_FragColor = vec4(col, 1.0);
+}`;
+  let vgl = null;
+  let vq = 1, emaDt = 16, vortexDrawn = false;     // 소용돌이 해상도 배율(느린 기기에서 자동으로 낮춤)
+  function initVortexGL() {
+    try {
+      const cv = document.createElement("canvas"); cv.width = cv.height = 512;
+      const gl = cv.getContext("webgl", { alpha: false, antialias: false, preserveDrawingBuffer: true, powerPreference: "high-performance" });
+      if (!gl) return;
+      const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+      const prog = gl.createProgram();
+      gl.attachShader(prog, sh(gl.VERTEX_SHADER, VORTEX_VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, VORTEX_FS));
+      gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      gl.useProgram(prog);
+      const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(prog, "aPos"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      cv.addEventListener("webglcontextlost", (e) => { e.preventDefault(); vgl = null; });   // 손실되면 벡터 방식으로 대체
+      vgl = { cv, gl, uTime: gl.getUniformLocation(prog, "uTime"), uDir: gl.getUniformLocation(prog, "uDir"), uSeed: gl.getUniformLocation(prog, "uSeed") };
+    } catch (e) { console.warn("vortex shader unavailable, using vector fallback", e); vgl = null; }
+  }
+  /** R×R 픽셀로 소용돌이를 그린다. 결과는 vgl.cv 의 좌하단 R×R 영역 */
+  function renderVortex(R, t, dir, seed) {
+    const { gl } = vgl;
+    gl.viewport(0, 0, R, R);
+    gl.uniform1f(vgl.uTime, t); gl.uniform1f(vgl.uDir, dir); gl.uniform1f(vgl.uSeed, seed);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
   // ───────────────────────── 세계 구성 ─────────────────────────
   let gates = [], specials = [], rifts = [], glows = [], nebulaSprites = [], blobs = [], miniStatic = null;
   let nebulaTex = null, bloomTex = {}, raysTex = null;
@@ -252,6 +331,7 @@
     bloomTex.hot = makeBloom("255,255,240", "244,255,134");
     bloomTex.core = makeBloom("255,255,245", "255,252,200");
     raysTex = [makeRays(1), makeRays(2)];
+    initVortexGL();
     buildMiniStatic(); await step();
     if (document.fonts && document.fonts.load) {
       try { await Promise.race([document.fonts.load('700 20px "Noto Serif KR"', "페이스라이"), new Promise((res) => setTimeout(res, 1500))]); } catch (_) { /* 기본 글꼴 */ }
@@ -583,6 +663,14 @@
     ctx.fillStyle = "#000"; ctx.fillRect(-sz / 2, -sz / 2, sz, sz);
     const vx = (sp.cx - sp.S / 2) * k, vy = (sp.cy - sp.S / 2) * k, vr = sp.rad * k * 1.25;
     ctx.translate(vx, vy);
+    if (vgl) {
+      // 틈 전체(바운딩 박스)를 덮는 정사각형에 셰이더 소용돌이를 그린다
+      const half = sp.rad * k * 1.08;
+      const R = clamp(Math.round(half * 2 * z * dpr * vq), 64, 448);
+      vortexDrawn = true;
+      renderVortex(R, t, s.idx ? -1 : 1, s.idx * 7.3 + 1.7);
+      ctx.drawImage(vgl.cv, 0, 512 - R, R, R, -half, -half, half * 2, half * 2);
+    } else {
     const rot = t * 0.7 * (s.idx ? -1 : 1);
     const arms = 6;
     const ag = ctx.createRadialGradient(0, 0, 0, 0, 0, vr);
@@ -604,6 +692,7 @@
         ctx.lineTo(Math.cos(th - hw) * rr, Math.sin(th - hw) * rr);
       }
       ctx.closePath(); ctx.fill();
+    }
     }
     // 중심: 하얀 핵
     ctx.globalCompositeOperation = "lighter";
@@ -723,6 +812,13 @@
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.12, (now - last) / 1000 || 0.016); last = now;
     const t = (now - t0) / 1000;
+    // 소용돌이가 보이는 동안 프레임이 느려지면 소용돌이 해상도를 낮추고, 여유가 생기면 천천히 되돌린다
+    emaDt += (dt * 1000 - emaDt) * 0.08;
+    if (vortexDrawn) {
+      if (emaDt > 36 && vq > 0.55) vq = Math.max(0.55, vq * 0.96);
+      else if (emaDt < 21 && vq < 1) vq = Math.min(1, vq * 1.015);
+    }
+    vortexDrawn = false;
     update(dt, now);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -803,6 +899,6 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
   window.RasyancutMap = {
     prepare, show, hide, isOpen: () => open,
-    _debug: { SKIP, cam, gates: () => gates, specials: () => specials, WORLD, MAX_SPEED, SANCT_R, flyTo },
+    _debug: { SKIP, getVq: () => vq, cam, gates: () => gates, specials: () => specials, WORLD, MAX_SPEED, SANCT_R, flyTo },
   };
 })();
