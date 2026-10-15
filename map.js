@@ -738,23 +738,55 @@ void main(){
       vd.data[k] = 244; vd.data[k + 1] = 255; vd.data[k + 2] = 170; vd.data[k + 3] = Math.round(clamp(Math.pow(v, 1.4) * Math.sin(Math.PI * Math.min(1, v * 1.02)) * hx, 0, 1) * 255);
     }
     vg.putImageData(vd, 0, 0);
-    // 어둠의 안개: 겹친 여러 덩이로 가장자리가 울퉁불퉁한 짙은 덩어리
-    const ms = 256, mc = mk(ms, ms), mg = mc.getContext("2d"), r = rng32(77);
-    for (let i = 0; i < 9; i++) {
-      const x = ms * (0.28 + 0.44 * r()), y = ms * (0.28 + 0.44 * r()), rad = ms * (0.2 + 0.2 * r());
-      const g = mg.createRadialGradient(x, y, 0, x, y, rad);
-      g.addColorStop(0, "rgba(0,0,8,0.62)"); g.addColorStop(0.55, "rgba(0,0,8,0.26)"); g.addColorStop(1, "rgba(0,0,8,0)");
+    // 검은 연기: 겹친 여러 덩이. 배경이 거의 검정이라 그냥은 안 보이므로, 덩이 뒤에서 새어 나오는 아주 희미한 빛 테두리(역광)를 먼저 깔고
+    // 그 위에 짙은 연기 몸통을 올려 검은 윤곽이 드러나게 한다. 마지막에 둥글게 지워 텍스처 가장자리(네모 경계)가 남지 않게 한다
+    const ms = 256, mc = mk(ms, ms), mg = mc.getContext("2d"), r = rng32(77), lobes = [];
+    for (let i = 0; i < 11; i++) lobes.push([ms * (0.32 + 0.36 * r()), ms * (0.32 + 0.36 * r()), ms * (0.11 + 0.1 * r())]);
+    for (const [x, y, rad] of lobes) {
+      const g = mg.createRadialGradient(x, y, rad * 0.5, x, y, rad * 1.45);
+      g.addColorStop(0, "rgba(200,208,160,0)"); g.addColorStop(0.55, "rgba(200,208,160,0.05)"); g.addColorStop(0.8, "rgba(205,212,165,0.1)"); g.addColorStop(1, "rgba(200,208,160,0)");
       mg.fillStyle = g; mg.fillRect(0, 0, ms, ms);
     }
+    for (const [x, y, rad] of lobes) {
+      const g = mg.createRadialGradient(x, y, 0, x, y, rad * 1.1);
+      g.addColorStop(0, "rgba(0,0,6,0.92)"); g.addColorStop(0.6, "rgba(0,0,6,0.55)"); g.addColorStop(1, "rgba(0,0,6,0)");
+      mg.fillStyle = g; mg.fillRect(0, 0, ms, ms);
+    }
+    mg.globalCompositeOperation = "destination-in";
+    const fade = mg.createRadialGradient(ms / 2, ms / 2, ms * 0.28, ms / 2, ms / 2, ms * 0.5);
+    fade.addColorStop(0, "rgba(255,255,255,1)"); fade.addColorStop(1, "rgba(255,255,255,0)");
+    mg.fillStyle = fade; mg.fillRect(0, 0, ms, ms);
+    mg.globalCompositeOperation = "source-over";
     atmosTex = { streak: sc, veil: vc, mist: mc };
+  }
+
+  // 빛은 맵 위쪽 끝에서 가운데로 흘러내리고, 검은 연기는 아래쪽 끝에서 가운데로 피어오른다. 둘은 맵 가운데(y = 0)에서 만나 사라진다.
+  const MEET_BAND = 9000;          // 가운데 선 위로 이만큼 구간에서 빛이 서서히 옅어져 사라진다
+
+  /** 빛줄기 한 개를 그린다. 위쪽 끝 y0 ~ 머리 yh. 가운데 선(y = 0)에 다가갈수록 조각조각 옅어지다 사라진다 */
+  function drawFadingStreak(tex, cx, w, y0, yh, a) {
+    if (y0 >= 0) return;
+    const L = yh - y0, sh = tex.height, sw = tex.width, yA = -MEET_BAND;
+    if (yh <= yA) { ctx.globalAlpha = a; ctx.drawImage(tex, cx - w / 2, y0, w, L); return; }
+    if (y0 < yA) { const h1 = yA - y0; ctx.globalAlpha = a; ctx.drawImage(tex, 0, 0, sw, sh * h1 / L, cx - w / 2, y0, w, h1); }
+    const ys = Math.max(y0, yA), ye = Math.min(yh, 0), N = 7, step = (ye - ys) / N;
+    for (let s = 0; s < N; s++) {
+      const ya = ys + s * step, kk = ((ya + step / 2) - yA) / MEET_BAND;
+      ctx.globalAlpha = a * Math.pow(1 - kk, 1.6);
+      if (ctx.globalAlpha < 0.01) continue;
+      ctx.drawImage(tex, 0, sh * (ya - y0) / L, sw, sh * step / L, cx - w / 2, ya, w, step);
+    }
   }
 
   /** 위에서 아래로 흘러내리는 빛 (월드 좌표) */
   function drawLightFlow(t) {
     if (!atmosTex) makeAtmosTex();
     const z = cam.z, vx0 = cam.x - cw / 2 / z, vx1 = cam.x + cw / 2 / z, vy0 = cam.y - ch / 2 / z, vy1 = cam.y + ch / 2 / z;
+    if (vy0 > 0) return;                                           // 화면이 전부 가운데 선 아래쪽이면 빛은 없다
     const Wc = 380, P = 5200, far = z < 0.12;
-    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    ctx.save();
+    ctx.beginPath(); ctx.arc(CX, CY, R_MAP, 0, Math.PI * 2); ctx.clip();         // 맵 원 안에서만
+    ctx.globalCompositeOperation = "lighter";
     const i0 = Math.floor(vx0 / Wc) - 1, i1 = Math.floor(vx1 / Wc) + 1;
     const draw = (tex, i, n, wMin, wVar, lenMul, vMin, vVar, aMin, aVar, seed) => {
       const hx = hash2(i, n, seed), hw = hash2(i, n, seed + 1), hl = hash2(i, n, seed + 2), hv = hash2(i, n, seed + 3), hp = hash2(i, n, seed + 4), ha = hash2(i, n, seed + 5);
@@ -762,10 +794,9 @@ void main(){
       const v = vMin + vVar * hv, base = (((t * v + hp * 7919) % Pn) + Pn) % Pn;
       const a = (aMin + aVar * ha) * (0.78 + 0.22 * Math.sin(t * (0.5 + hv) + hp * 40));
       if (Math.abs(cx) > R_MAP + 600) return;
-      for (let k = Math.ceil((vy0 - base) / Pn); k <= Math.floor((vy1 + L - base) / Pn); k++) {
+      for (let k = Math.ceil((vy0 - base) / Pn); k <= Math.floor((Math.min(vy1, 0) + L - base) / Pn); k++) {
         const yh = base + k * Pn;
-        if (Math.hypot(cx, yh) > R_MAP) continue;
-        ctx.globalAlpha = a; ctx.drawImage(tex, cx - w / 2, yh - L, w, L);
+        drawFadingStreak(tex, cx, w, yh - L, yh, a);
       }
     };
     // 거대한 빛기둥: 폭 수천·길이 수만 단위로 아주 느리게 흘러내린다 (듬성듬성)
@@ -776,11 +807,10 @@ void main(){
       const cx = (i + hx) * Wg, w = Math.max(3400 + 5200 * hw, 3 / z), L = 14000 + 13000 * hl, Pn = Pg * (0.9 + 0.5 * hp);
       const base = (((t * (55 + 60 * hv) + hp * 12011) % Pn) + Pn) % Pn;
       if (Math.abs(cx) > R_MAP + 1500) continue;
-      ctx.globalAlpha = (0.32 + 0.22 * ha) * (0.8 + 0.2 * Math.sin(t * 0.3 + hp * 30));
-      for (let k = Math.ceil((vy0 - base) / Pn); k <= Math.floor((vy1 + L - base) / Pn); k++) {
+      const a = (0.32 + 0.22 * ha) * (0.8 + 0.2 * Math.sin(t * 0.3 + hp * 30));
+      for (let k = Math.ceil((vy0 - base) / Pn); k <= Math.floor((Math.min(vy1, 0) + L - base) / Pn); k++) {
         const yh = base + k * Pn;
-        if (Math.hypot(cx, yh) > R_MAP + 2000) continue;
-        ctx.drawImage(atmosTex.streak, cx - w / 2, yh - L, w, L);
+        drawFadingStreak(atmosTex.streak, cx, w, yh - L, yh, a);
       }
     }
     for (let i = i0; i <= i1; i++) {
@@ -791,23 +821,31 @@ void main(){
     ctx.restore();
   }
 
-  /** 아래에서 위로 흘러 올라가는 어둠 (월드 좌표) */
+  /** 아래에서 위로 피어오르는 검은 연기 (월드 좌표). 맵 아래쪽 끝에서 올라와 가운데(y = 0)에 닿을 즈음 옅어져 사라진다 */
   function drawMist(t) {
     if (!atmosTex) makeAtmosTex();
     const z = cam.z, vx0 = cam.x - cw / 2 / z, vx1 = cam.x + cw / 2 / z, vy0 = cam.y - ch / 2 / z, vy1 = cam.y + ch / 2 / z;
-    const Cm = 3000, Pm = 9500;
+    if (vy1 < 0) return;                                           // 화면이 전부 가운데 선 위쪽이면 연기는 없다
+    const Cm = 2400, Pm = 8000;
     const i0 = Math.floor(vx0 / Cm) - 1, i1 = Math.floor(vx1 / Cm) + 1;
-    ctx.save(); ctx.globalCompositeOperation = "source-over";
+    ctx.save();
+    ctx.beginPath(); ctx.arc(CX, CY, R_MAP, 0, Math.PI * 2); ctx.clip();         // 맵 원 안에서만
     for (let i = i0; i <= i1; i++) {
-      const hx = hash2(i, 0, 401), hs = hash2(i, 0, 402), hv = hash2(i, 0, 403), hp = hash2(i, 0, 404), ha = hash2(i, 0, 405), hq = hash2(i, 0, 406);
-      const s = 2400 + 2200 * hs, v = 120 + 160 * hv, Pn = Pm * (0.9 + 0.5 * hq);
-      const cx = (i + hx) * Cm + Math.sin(t * 0.09 + hp * 30) * 380, base = (((hp * Pn - t * v) % Pn) + Pn) % Pn;   // 위로(y 가 줄어드는 쪽) 흐른다
-      if (Math.abs(cx) > R_MAP + 800) continue;
-      ctx.globalAlpha = 0.62 + 0.3 * ha;
-      for (let k = Math.ceil((vy0 - s - base) / Pn); k <= Math.floor((vy1 + s - base) / Pn); k++) {
-        const yc = base + k * Pn;
-        if (Math.hypot(cx, yc) > R_MAP + 600) continue;
-        ctx.drawImage(atmosTex.mist, cx - s / 2, yc - s / 2, s, s);
+      for (let n = 0; n < 2; n++) {                                // 칸마다 두 덩이: 겹쳐서 연기가 짙고 불규칙해진다
+        const sd = 400 + n * 20;
+        const hx = hash2(i, n, sd + 1), hs = hash2(i, n, sd + 2), hv = hash2(i, n, sd + 3), hp = hash2(i, n, sd + 4), ha = hash2(i, n, sd + 5), hq = hash2(i, n, sd + 6);
+        const s0 = 3000 + 3000 * hs, v = 140 + 170 * hv, Pn = Pm * (0.9 + 0.5 * hq);
+        const cx = (i + hx) * Cm + Math.sin(t * 0.11 + hp * 30) * 420, base = (((hp * Pn - t * v) % Pn) + Pn) % Pn;   // 위로(y 가 줄어드는 쪽) 흐른다
+        if (Math.abs(cx) > R_MAP + 800) continue;
+        for (let k = Math.ceil((Math.max(vy0, 0) - s0 * 1.4 - base) / Pn); k <= Math.floor((vy1 + s0 * 1.4 - base) / Pn); k++) {
+          const yc = base + k * Pn;
+          if (yc < 0 || yc > R_MAP) continue;
+          const s = s0 * (0.75 + 0.8 * (1 - yc / R_MAP));         // 올라갈수록 퍼지며 커진다
+          const meet = Math.min(1, yc / 9000);                     // 가운데에 가까울수록 옅어져 사라진다
+          ctx.globalAlpha = (0.7 + 0.28 * ha) * meet * meet * (3 - 2 * meet);
+          if (ctx.globalAlpha < 0.01) continue;
+          ctx.drawImage(atmosTex.mist, cx - s / 2, yc - s / 2, s, s);
+        }
       }
     }
     ctx.restore();
