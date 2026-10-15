@@ -625,6 +625,22 @@ body.map-open .stage, body.map-open .panel { visibility: hidden; }
   animation: loading-zoom 12s ease-out forwards;
 }
 @keyframes loading-zoom { from { transform: scale(1); } to { transform: scale(1.05); } }
+/* WebGL 효과 캔버스: 이미지 상자 밖(연기·빛 번짐)까지 화면 전체에 그린다 */
+.loading-fx { position: absolute; inset: 0; width: 100%; height: 100%; display: none; pointer-events: none; }
+.loading-fx.on { display: block; }
+.loading-img.fx-off { opacity: 0; }
+/* WebGL2 를 못 쓸 때만 쓰는 대체 효과 (이미지 필터를 숨 쉬듯 움직인다) */
+.loading-img[data-fx="1"]  { animation: loading-zoom 12s ease-out forwards, fb-smoke 5s ease-in-out infinite; }
+.loading-img[data-fx="2"]  { animation: loading-zoom 12s ease-out forwards, fb-blaze 1.6s ease-in-out infinite; }
+.loading-img[data-fx="2b"] { animation: loading-zoom 12s ease-out forwards, fb-blaze 1.6s ease-in-out infinite; }
+.loading-img[data-fx="3"]  { animation: loading-zoom 12s ease-out forwards, fb-blue 3.2s ease-in-out infinite; }
+.loading-img[data-fx="5"]  { animation: loading-zoom 12s ease-out forwards, fb-rot 4s ease-in-out infinite; }
+.loading-img[data-fx="6"]  { animation: loading-zoom 12s ease-out forwards, fb-light 3.4s ease-in-out infinite; }
+@keyframes fb-smoke { 0%,100% { filter: brightness(.85) drop-shadow(0 0 18px rgba(120, 10, 14, .5)); } 50% { filter: brightness(.7) drop-shadow(0 0 34px rgba(150, 12, 18, .7)); } }
+@keyframes fb-blaze { 0%,100% { filter: brightness(1) drop-shadow(0 0 16px rgba(255, 120, 20, .6)); } 50% { filter: brightness(1.18) drop-shadow(0 0 32px rgba(255, 90, 10, .85)); } }
+@keyframes fb-blue  { 0%,100% { filter: brightness(1) drop-shadow(0 0 20px rgba(60, 130, 255, .6)); } 50% { filter: brightness(1.15) drop-shadow(0 0 44px rgba(70, 150, 255, .9)); } }
+@keyframes fb-rot   { 0%,100% { filter: brightness(.9) hue-rotate(0deg) drop-shadow(0 0 16px rgba(170, 60, 255, .5)); } 50% { filter: brightness(.75) hue-rotate(12deg) drop-shadow(0 0 30px rgba(170, 60, 255, .8)); } }
+@keyframes fb-light { 0%,100% { filter: drop-shadow(0 0 26px rgba(255, 255, 255, .7)); } 50% { filter: drop-shadow(0 0 60px rgba(255, 255, 255, 1)); } }
 .spinner {
   position: absolute;
   right: max(28px, calc(env(safe-area-inset-right) + 22px));
