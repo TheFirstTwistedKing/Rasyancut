@@ -16,6 +16,7 @@
       <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
     </div>
 
+    <div class="tree-box" id="tree-box">
     <svg id="tree" class="tree" viewBox="10 -30 660 870" role="img" aria-label="세피로트의 나무" preserveAspectRatio="xMidYMid meet">
       <defs>
         <!-- 데이터는 assets/tree-data.js 에서 script.js 가 채운다 -->
@@ -82,47 +83,50 @@
         <ellipse cx="298" cy="806" rx="236" ry="21" fill="none" stroke="url(#base-grad)" stroke-width="1" stroke-dasharray="2 9" vector-effect="non-scaling-stroke" class="base-dash"/>
       </g>
 
-      <!-- 나무 몸통 (아래→위 등장 마스크 적용) -->
-      <g id="tree-body" mask="url(#reveal)">
-        <!-- 검정 속 -->
-        <use href="#tree-outline" fill="#000" fill-rule="evenodd"/>
-        <use href="#tree-outline" fill="url(#scanlines)" fill-rule="evenodd"/>
+        <!-- 나무 몸통 (아래→위 등장 마스크 적용) -->
+        <g id="tree-body" mask="url(#reveal)">
+          <!-- 검정 속 -->
+          <use href="#tree-outline" fill="#000" fill-rule="evenodd"/>
+          <use href="#tree-outline" fill="url(#scanlines)" fill-rule="evenodd"/>
 
-        <!-- 나무결 · 옹이 -->
-        <g clip-path="url(#tree-clip)" class="bark">
-          <path id="tree-bark" fill="none" stroke="#f4ff86" stroke-width=".7" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" opacity=".42"/>
-          <path id="tree-knots" fill="none" stroke="#f4ff86" stroke-width=".8" vector-effect="non-scaling-stroke" opacity=".5"/>
-          <rect class="sweep" x="-60" y="-120" width="760" height="120" fill="url(#sweep)"/>
+          <!-- 나무결 · 옹이 -->
+          <g clip-path="url(#tree-clip)" class="bark">
+            <path id="tree-bark" fill="none" stroke="#f4ff86" stroke-width=".7" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" opacity=".42"/>
+            <path id="tree-knots" fill="none" stroke="#f4ff86" stroke-width=".8" vector-effect="non-scaling-stroke" opacity=".5"/>
+            <rect class="sweep" x="-60" y="-120" width="760" height="120" fill="url(#sweep)"/>
+          </g>
+
+          <!-- 윤곽선: 바깥은 네온 연노랑, 선 중심으로 갈수록 흰색 -->
+          <use class="glow-layer" href="#tree-outline" fill="none" stroke="#eeff6b" stroke-width="9" opacity=".5" filter="url(#glow-wide)" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+          <use class="glow-layer" href="#tree-outline" fill="none" stroke="#eeff6b" stroke-width="3.4" opacity=".95" filter="url(#glow-soft)" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+          <use href="#tree-outline" fill="none" stroke="#f4ff86" stroke-width="3.4" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+          <use href="#tree-outline" fill="none" stroke="#fbffc8" stroke-width="2.2" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+          <use href="#tree-outline" fill="none" stroke="#ffffff" stroke-width="1.1" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
         </g>
 
-        <!-- 윤곽선: 바깥은 네온 연노랑, 선 중심으로 갈수록 흰색 -->
-        <use class="glow-layer" href="#tree-outline" fill="none" stroke="#eeff6b" stroke-width="9" opacity=".5" filter="url(#glow-wide)" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-        <use class="glow-layer" href="#tree-outline" fill="none" stroke="#eeff6b" stroke-width="3.4" opacity=".95" filter="url(#glow-soft)" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-        <use href="#tree-outline" fill="none" stroke="#f4ff86" stroke-width="3.4" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-        <use href="#tree-outline" fill="none" stroke="#fbffc8" stroke-width="2.2" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-        <use href="#tree-outline" fill="none" stroke="#ffffff" stroke-width="1.1" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-      </g>
+        <!-- 확대(카메라 이동) 중에는 무거운 나무 대신 단순화한 윤곽으로 잠시 바꿔 그린다 -->
+        <g id="tree-lite" class="tree-lite" aria-hidden="true">
+          <use href="#tree-outline-lite" fill="none" stroke="#eeff6b" stroke-width="10" opacity=".13" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+          <use href="#tree-outline-lite" fill="none" stroke="#eeff6b" stroke-width="5" opacity=".26" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+          <use href="#tree-outline-lite" fill="none" stroke="#f4ff86" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+          <use href="#tree-outline-lite" fill="none" stroke="#fbffc8" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+          <use href="#tree-outline-lite" fill="none" stroke="#ffffff" stroke-width=".9" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        </g>
 
-      <!-- 확대(카메라 이동) 중에는 무거운 나무 대신 단순화한 윤곽으로 잠시 바꿔 그린다 -->
-      <g id="tree-lite" class="tree-lite" aria-hidden="true">
-        <use href="#tree-outline-lite" fill="none" stroke="#eeff6b" stroke-width="10" opacity=".13" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-        <use href="#tree-outline-lite" fill="none" stroke="#eeff6b" stroke-width="5" opacity=".26" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-        <use href="#tree-outline-lite" fill="none" stroke="#f4ff86" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-        <use href="#tree-outline-lite" fill="none" stroke="#fbffc8" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-        <use href="#tree-outline-lite" fill="none" stroke="#ffffff" stroke-width=".9" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-      </g>
+        <!-- 등장 중 훑고 올라가는 스캔선 -->
+        <rect id="reveal-front" x="-200" y="860" width="1100" height="2" fill="url(#front-grad)" opacity="0"/>
 
-      <!-- 등장 중 훑고 올라가는 스캔선 -->
-      <rect id="reveal-front" x="-200" y="860" width="1100" height="2" fill="url(#front-grad)" opacity="0"/>
+        <!-- 기둥 위 라틴어 (세로) -->
+        <g id="trunk-label" class="trunk-label" aria-hidden="true">
+          <text id="trunk-text" text-anchor="middle" filter="url(#glow-text)"></text>
+        </g>
 
-      <!-- 기둥 위 라틴어 (세로) -->
-      <g id="trunk-label" class="trunk-label" aria-hidden="true">
-        <text id="trunk-text" text-anchor="middle" filter="url(#glow-text)"></text>
-      </g>
-
-      <!-- 열매 (script.js 에서 만든다: 열매마다 색이 다르다) -->
+    </svg>
+    <!-- 열매는 나무와 겹쳐 놓은 별도 레이어다. 두 레이어를 통째로 기울여(GPU) 바람에 흔들리게 하려는 구조 -->
+    <svg id="tree-fruits" class="tree tree-fruits" viewBox="10 -30 660 870" aria-label="세피로트의 열매" preserveAspectRatio="xMidYMid meet">
       <g id="fruit-group" class="fruit-group"></g>
     </svg>
+    </div>
   </main>
 
   <!-- 배경음악 켜기/끄기 -->

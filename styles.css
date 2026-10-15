@@ -119,14 +119,15 @@ body {
 @keyframes eq { 0%, 100% { transform: scaleY(.25); } 50% { transform: scaleY(1); } }
 
 /* ───────── 나무 SVG ───────── */
+.tree-box { position: relative; z-index: 1; width: 100%; height: 100%; }
 .tree {
-  position: relative;
-  z-index: 1;
   width: 100%;
   height: 100%;
   overflow: visible;
   display: block;
 }
+.tree-fruits { position: absolute; inset: 0; pointer-events: none; }
+.tree-fruits .fruit { pointer-events: auto; }
 
 .base { opacity: 0; animation: fade-in 1.2s .2s forwards; }
 .base-dash { animation: dash 14s linear infinite; }
@@ -169,6 +170,28 @@ body {
 .fruit .star-dots circle:nth-child(4n+1) { animation-delay: -2.1s; }
 .fruit:hover .star, .fruit:focus-visible .star { opacity: 1; animation-duration: 16s; }
 .fruit .bounce { will-change: transform; }
+/* ── 바람: 나무 레이어와 열매 레이어를 통째로 뿌리를 중심으로 아주 약하게 기울인다(위로 갈수록 많이 움직인다).
+      레이어째로 GPU 가 움직이므로 나무를 다시 그리지 않는다. 열매는 거기에 더해 가지 끝에서 시계추처럼 흔들린다 ── */
+.tree { transform-origin: var(--ox, 50%) var(--oy, 92%); animation: sway 17s ease-in-out infinite; will-change: transform; }
+@keyframes sway {
+  0%, 100% { transform: skewX(0deg) rotate(0deg); }
+  14% { transform: skewX(-.30deg) rotate(.06deg); }
+  27% { transform: skewX(.12deg) rotate(-.03deg); }
+  41% { transform: skewX(.42deg) rotate(-.09deg); }
+  55% { transform: skewX(.05deg) rotate(0deg); }
+  68% { transform: skewX(-.22deg) rotate(.05deg); }
+  82% { transform: skewX(.20deg) rotate(-.04deg); }
+}
+.fruit-unit {
+  transform-box: view-box; transform-origin: var(--ax) var(--ay);
+  animation: swing var(--sw, 6s) ease-in-out infinite;
+  animation-delay: calc(var(--ph, 0s) * 1.7);
+}
+@keyframes swing {
+  0%, 100% { transform: rotate(calc(var(--sa, 3deg) * -1)); }
+  50%      { transform: rotate(var(--sa, 3deg)); }
+}
+.stage.zoomed .tree, .stage.zoomed .fruit-unit { animation-play-state: paused; }       /* 확대해서 볼 때는 가만히 */
 /* 눌림 판정은 열매마다 자기 .hit 원 하나만 (큰 빛무리가 옆 열매의 클릭을 가로채지 않게) */
 .fruit .bounce, .fruit .ripples { pointer-events: none; }
 .fruit-unit .bloom, .fruit-unit .flares, .fruit-unit .core { animation-delay: var(--ph, 0s); }
@@ -498,6 +521,8 @@ body {
   animation-iteration-count: 1 !important;
   transition-duration: .001s !important;
 }
+:root[data-reduce-motion="true"] .tree,
+:root[data-reduce-motion="true"] .fruit-unit { animation: none; }
 :root[data-reduce-motion="true"] .dust,
 :root[data-reduce-motion="true"] .ripples { display: none; }
 
