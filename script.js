@@ -152,6 +152,50 @@
   };
   window.RasyancutTransition = Transition;   // 이후 화면(인트로 등)에서 재사용
 
+  // ── 효과음 ─────────────────────────────────────────────────
+  // 지연 없이 재생되도록 Web Audio 로 미리 디코딩해 둔다. (브라우저 정책상 첫 클릭/키 입력 뒤에 준비됨)
+  // fetch 가 막히는 환경(파일을 직접 연 경우 등)에서는 일반 Audio 로 대신 재생한다.
+  const Sfx = (() => {
+    const URL_ = "assets/sfx/relic-awaken.wav";
+    let ctx = null, buf = null, raw = null;
+    const fallback = new Audio(URL_);
+    fallback.preload = "auto";
+    fetch(URL_).then((r) => r.arrayBuffer()).then((a) => { raw = a; }).catch(() => {});
+
+    const unlock = async () => {
+      try {
+        if (!ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          ctx = new AC();
+        }
+        if (ctx.state === "suspended") await ctx.resume();
+        if (!buf && raw) buf = await ctx.decodeAudioData(raw.slice(0));
+      } catch (_) { /* 실패하면 fallback 사용 */ }
+    };
+    ["pointerdown", "keydown", "touchstart"].forEach((ev) =>
+      window.addEventListener(ev, unlock, { passive: true }));
+
+    const play = (volume = 0.8) => {
+      if (ctx && buf && ctx.state === "running") {
+        const src = ctx.createBufferSource();
+        const gain = ctx.createGain();
+        src.buffer = buf;
+        gain.gain.value = volume;
+        src.connect(gain).connect(ctx.destination);
+        src.start();
+        return;
+      }
+      try {
+        const a = fallback.cloneNode();
+        a.volume = volume;
+        a.play().catch(() => {});
+      } catch (_) { /* 무음으로 넘어간다 */ }
+    };
+    return { play, unlock };
+  })();
+  window.RasyancutSfx = Sfx;               // 이후 화면에서도 같은 소리를 재사용
+
   // ── 열매 상호작용 ───────────────────────────────────────────
   const fruit = $("fruit");
 
@@ -316,6 +360,7 @@
     if (camMode !== "idle" || busyCam) return;
     busyCam = true;
     camMode = "zooming";
+    Sfx.play(0.8);                                // 유물이 깨어나는 소리
     stage.classList.add("zoomed", "zooming");
     startWaves();
     const tgt = zoomTarget();
