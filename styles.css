@@ -234,6 +234,14 @@ body {
 #tree-body { transition: opacity 1.2s ease; }
 .stage.zoomed #tree-body { opacity: 0; transition: opacity 1.5s ease .25s; }
 .stage.deep #tree-body { display: none; }
+
+/* 확대 중에는 단순화한 나무로 교체(렌더 비용 대폭 감소) */
+.tree-lite { display: none; }
+.stage.lite #tree-body { display: none; }
+.stage.lite .tree-lite { display: inline; }
+.stage.lite .trunk-label { display: none; }
+.stage.zoomed .tree-lite { opacity: 0; transition: opacity 1.3s ease .15s; }
+.stage.deep .tree-lite { display: none; }
 .stage.zoomed .trunk-label { opacity: 0; }
 .stage.zoomed .fruit { pointer-events: none; }          /* 확대 중에는 큰 히트영역이 빈 곳 클릭을 막지 않게 */
 .stage.zoomed .bloom { transform: scale(.85); }
