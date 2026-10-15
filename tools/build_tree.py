@@ -204,6 +204,17 @@ for c in contours:
     outline.append(to_path(c2))
 outline_d = "".join(outline)
 
+# 확대(카메라 이동) 중에만 쓰는 단순화 윤곽: 직선 폴리라인 + 큰 오차 → 점 수가 훨씬 적어 매 프레임 그리기가 가볍다
+def to_polyline(pts):
+    p = pts.reshape(-1, 2).astype(float) / SS - np.array([PAD, PAD])
+    return "M" + "L".join(f"{x:.0f} {y:.0f}" for x, y in p) + "Z"
+lite = []
+for c in contours:
+    if cv2.contourArea(c) < 90 * SS * SS:
+        continue
+    lite.append(to_polyline(cv2.approxPolyDP(c, 2.6 * SS, True)))
+outline_lite_d = "".join(lite)
+
 # ---------------------------------------------------------------- 나무결(흐름선)
 m1 = (mask1 > 0).astype(np.uint8)
 dist = cv2.distanceTransform(m1, cv2.DIST_L2, 5)
@@ -299,6 +310,7 @@ for y in range(380, 760, 10):
 bbox = cv2.boundingRect(sm)
 data = {
     "outline": outline_d,
+    "outlineLite": outline_lite_d,
     "bark": bark_d,
     "knots": knots_d,
     "fruit": fruit,
@@ -306,7 +318,7 @@ data = {
     "bbox": [bbox[0] // SS - PAD, bbox[1] // SS - PAD, bbox[2] // SS, bbox[3] // SS],
 }
 OUT.write_text("window.TREE_DATA = " + json.dumps(data, separators=(",", ":")) + ";\n", encoding="utf-8")
-print("outline", len(outline_d), "bark", len(bark_d), "bbox", data["bbox"], "fruit", fruit)
+print("outline", len(outline_d), "lite", len(outline_lite_d), "bark", len(bark_d), "bbox", data["bbox"], "fruit", fruit)
 
 if "--preview" in sys.argv:
     pv = sys.argv[sys.argv.index("--preview") + 1]

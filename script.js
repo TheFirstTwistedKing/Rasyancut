@@ -14,6 +14,7 @@
   $("tree-outline").setAttribute("d", D.outline);
   $("tree-bark").setAttribute("d", D.bark);
   $("tree-knots").setAttribute("d", D.knots);
+  $("tree-outline-lite").setAttribute("d", D.outlineLite);
 
   // ── 기둥 위 세로 라틴어: 글자는 눕히지 않고 똑바로, 위에서 아래로 쌓는다 ──
   const trunkText = $("trunk-text");
@@ -160,7 +161,9 @@
     let ctx = null, buf = null, raw = null;
     const fallback = new Audio(URL_);
     fallback.preload = "auto";
-    fetch(URL_).then((r) => r.arrayBuffer()).then((a) => { raw = a; }).catch(() => {});
+    if (location.protocol !== "file:") {       // 파일을 직접 연 경우 fetch 는 브라우저가 막으므로 요청하지 않는다
+      fetch(URL_).then((r) => r.arrayBuffer()).then((a) => { raw = a; }).catch(() => {});
+    }
 
     const unlock = async () => {
       try {
@@ -457,7 +460,7 @@
     camMode = "zooming";
     Sfx.play();                                   // 유물이 깨어나는 소리
     Bgm.duck();                                   // 배경음악을 잠깐 낮춰 효과음이 돋보이게
-    stage.classList.add("zoomed", "zooming");
+    stage.classList.add("lite", "zoomed", "zooming");   // lite: 확대 중에는 가벼운 나무로 교체
     startWaves();
     const tgt = zoomTarget();
     const done = flyTo(camFor(tgt.s, tgt.px, tgt.py), 1500);
@@ -483,7 +486,13 @@
     panel.setAttribute("aria-hidden", "true");
     panel.setAttribute("inert", "");
     stage.classList.remove("deep");
-    void stage.offsetWidth;                       // display:none 해제 직후 전환이 시작되도록
+    const lite = $("tree-lite");                  // 되돌아올 때 단순 나무가 서서히 나타나도록
+    lite.style.transition = "none";
+    lite.style.opacity = "0";
+    void stage.offsetWidth;
+    lite.style.transition = "opacity 1s ease";
+    lite.style.opacity = "";
+    setTimeout(() => { lite.style.transition = ""; }, 1100);
     stage.classList.remove("zoomed");
     stage.classList.add("zooming");
     stopWaves();
@@ -493,6 +502,15 @@
     camMode = "idle";
     stage.classList.remove("zooming");
     fitView();
+    // 단순 나무 → 원래 나무로 부드럽게 교체
+    const body = $("tree-body");
+    body.style.transition = "none";
+    body.style.opacity = "0";
+    stage.classList.remove("lite");
+    void body.getBoundingClientRect();
+    body.style.transition = "opacity .7s ease";
+    body.style.opacity = "";
+    setTimeout(() => { body.style.transition = ""; }, 800);
     busyCam = false;
     fruit.focus({ preventScroll: true });
   };

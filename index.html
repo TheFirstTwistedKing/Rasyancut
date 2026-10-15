@@ -25,6 +25,7 @@
       <defs>
         <!-- 데이터는 assets/tree-data.js 에서 script.js 가 채운다 -->
         <path id="tree-outline" fill-rule="evenodd"/>
+        <path id="tree-outline-lite" fill-rule="evenodd"/>   <!-- 확대 중에만 쓰는 단순화 윤곽 -->
         <clipPath id="tree-clip"><use href="#tree-outline" clip-rule="evenodd"/></clipPath>
 
         <!-- 네온 번짐 -->
@@ -126,6 +127,15 @@
         <use href="#tree-outline" fill="none" stroke="#f4ff86" stroke-width="3.4" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
         <use href="#tree-outline" fill="none" stroke="#fbffc8" stroke-width="2.2" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
         <use href="#tree-outline" fill="none" stroke="#ffffff" stroke-width="1.1" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+      </g>
+
+      <!-- 확대(카메라 이동) 중에는 무거운 나무 대신 단순화한 윤곽으로 잠시 바꿔 그린다 -->
+      <g id="tree-lite" class="tree-lite" aria-hidden="true">
+        <use href="#tree-outline-lite" fill="none" stroke="#eeff6b" stroke-width="10" opacity=".13" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        <use href="#tree-outline-lite" fill="none" stroke="#eeff6b" stroke-width="5" opacity=".26" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        <use href="#tree-outline-lite" fill="none" stroke="#f4ff86" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        <use href="#tree-outline-lite" fill="none" stroke="#fbffc8" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        <use href="#tree-outline-lite" fill="none" stroke="#ffffff" stroke-width=".9" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
       </g>
 
       <!-- 등장 중 훑고 올라가는 스캔선 -->
