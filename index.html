@@ -216,6 +216,8 @@
   <section class="map-screen" id="map-screen" aria-hidden="true" inert>
     <canvas class="map-canvas" id="map-canvas"></canvas>
     <div class="map-vignette" aria-hidden="true"></div>
+    <canvas class="burn-canvas" id="burn-canvas" aria-hidden="true"></canvas>
+    <p class="map-toast" id="map-toast" aria-live="polite"></p>
     <div class="map-hud">
       <div class="map-top">
         <button class="map-btn" id="map-exit" type="button">
@@ -234,7 +236,10 @@
       </div>
       <canvas class="minimap" id="minimap" aria-label="미니맵"></canvas>
       <div class="joystick" id="joystick" aria-hidden="true"><i class="knob"></i></div>
-      <p class="map-hint">드래그로 이동 · 휠/핀치로 확대 · 미니맵을 눌러 이동</p>
+      <button class="boost-btn" id="boost" type="button" aria-label="가속 (누르는 동안 3배 속도)">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 5l7 7-7 7M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <p class="map-hint">드래그로 이동 · 휠/핀치로 확대 · Shift 가속 · 경계 밖으로 나가면 불타 재가 됩니다</p>
     </div>
   </section>
 

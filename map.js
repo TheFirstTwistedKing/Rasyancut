@@ -1,9 +1,10 @@
 /* 라시안컷 맵
  *
- *  - 세계 크기 16000 × 16000. 최고 속도로 끝에서 끝까지 약 8초 (CROSS_SECONDS)
- *  - 중앙: 성역의 경계 / 곳곳: 찢어진 차원의 틈 관문 260개(일반 258 + 특별 2)
- *  - 특별 관문(페이스리아의 차원의 틈, 오비투아리바의 차원의 틈): 연노랑·검정 소용돌이 + 사실적인 빛, 일반 관문보다 큼
- *  - 조작: 드래그(관성) · 휠/핀치 확대 · 방향키/WASD · 터치 조이스틱 · 미니맵 클릭
+ *  - 원형 맵(지름 192000). 최고속도로 끝에서 끝까지 약 96초, 가속하면 약 32초
+ *  - 중앙: 성역의 경계 / 곳곳: 찢어진 차원의 틈 관문 260개(일반 259 + 쌍둥이의 틈 1)
+ *  - 맵 밖으로 나가면 화면이 불타 재가 되고, 성역(맵 가운데)에서 다시 태어난다
+ *  - 쌍둥이의 틈(페이스리아와 오비투아리바): 연노랑·검정 소용돌이 하나 + 사실적인 빛, 가장 큼
+ *  - 조작: 드래그(관성) · 휠/핀치 확대 · 방향키/WASD(Shift 가속) · 터치 조이스틱(+가속 버튼) · 미니맵
  *
  *  window.RasyancutMap = { prepare(onProgress), show(), hide(), isOpen() }
  */
@@ -11,15 +12,17 @@
   "use strict";
 
   // ───────────────────────── 상수 ─────────────────────────
-  const WORLD = 16000;
-  const CX = WORLD / 2, CY = WORLD / 2;
-  const CROSS_SECONDS = 8;
-  const MAX_SPEED = WORLD / CROSS_SECONDS;          // 세계 단위/초 (끝에서 끝까지 8초)
+  // 원형 맵: 반지름 96000(지름 192000 = 이전 16000의 12배). 원점(0,0) = 성역의 중심
+  const R_MAP = 96000;
+  const WORLD = R_MAP * 2;
+  const CX = 0, CY = 0;
+  const MAX_SPEED = 2000;                            // 세계 단위/초 (끝에서 끝까지 최고속도로 약 96초)
+  const BOOST = 3;                                   // 가속(Shift / 가속 버튼) 배율 → 끝에서 끝까지 약 32초
   const SANCT_R = 1000;                              // 성역의 경계 반지름
-  const Z_MIN = 0.1, Z_MAX = 1.5;
+  const Z_MIN = 0.04, Z_MAX = 1.5;
   const NORMAL_GATES = 259;                          // + 쌍둥이의 차원의 틈 1 = 260
   const SPECIAL = [
-    { name: "페이스리아와 오비투아리바의 차원의 틈", x: 11900, y: 4100 },   // 쌍둥이: 한 틈 안에 두 소용돌이
+    { name: "페이스리아와 오비투아리바의 차원의 틈", x: 34000, y: -21000 },   // 쌍둥이의 틈: 소용돌이는 하나
   ];
   const NEON = "#eeff6b", NEON_SOFT = "#f4ff86", NEON_PALE = "#fbffc8";
 
@@ -154,8 +157,8 @@
       g.stroke();
     }
     g.globalAlpha = 1;
-    const vo = o.big ? 0.18 * S : 0;
-    return { c, S, pts, cx, cy, hw: hwMax * 1.12, hh: hh * 1.02, big: !!o.big, vc: [[cx - vo, cy], [cx + vo, cy]], vr: 0.235 * S };
+    
+    return { c, S, pts, cx, cy, hw: hwMax * 1.12, hh: hh * 1.02, big: !!o.big, vc: [[cx, cy]], vr: (o.big ? 0.27 : 0.2) * S };
   }
 
   function makeGlow(rgb) {
@@ -277,15 +280,7 @@ vec3 vortex(vec2 pl, float dir, float seed){
 }
 void main(){
   vec2 p = vUv * 2.0 - 1.0;
-  vec2 p1 = (p - vec2(-uOff, 0.0)) / uRs, p2 = (p - vec2(uOff, 0.0)) / uRs;
-  vec3 col = vec3(0.0);
-  if (dot(p1, p1) < 1.6) col += vortex(p1, uDir, uSeed);
-  if (dot(p2, p2) < 1.6) col += vortex(p2, -uDir, uSeed * 1.7 + 3.3);
-  // 두 소용돌이를 잇는 빛의 다리(쌍둥이의 결속): 한쪽에서 다른 쪽으로 흐르는 가스 가닥
-  float bx = abs(p.x) / max(uOff, 0.001);
-  float bn = fbm4(vec2(p.x * 7.0 + uTime * 0.7 * uDir, p.y * 11.0) + uSeed, 1000.0);
-  float bridge = exp(-pow(p.y / (0.07 + 0.05 * bn), 2.0)) * smoothstep(1.05, 0.15, bx);
-  col += vec3(0.95, 1.0, 0.5) * bridge * (0.25 + 0.7 * bn) * 0.6;
+  vec3 col = vortex(p / uRs, uDir, uSeed);        // 소용돌이는 하나
   col = 1.0 - exp(-col * 1.45);
   col += (hash(gl_FragCoord.xy) - 0.5) / 200.0;
   gl_FragColor = vec4(col, 1.0);
@@ -377,34 +372,33 @@ void main(){
   }
 
   // ───────────────────────── 세계 구성 ─────────────────────────
-  let gates = [], specials = [], rifts = [], glows = [], nebulaSprites = [], blobs = [], miniStatic = null;
-  let nebulaTex = null, bloomTex = {}, raysTex = null;
-  const NEB = 1024;
+  let gates = [], specials = [], rifts = [], glows = [], nebulaSprites = [], miniStatic = null;
+  let bloomTex = {}, raysTex = null;
   let prepared = false;
 
   function buildGates() {
     const r = rng32(20261015);
     const pts = [];
+    const polar = (rad, ang) => [CX + Math.cos(ang) * rad, CY + Math.sin(ang) * rad];
+    // 관문이 몰려 있는 구역(군집): 원 안 곳곳에 흩어 놓는다
     const centers = [];
-    for (let i = 0; i < 9; i++) {                       // 관문이 몰려 있는 구역
-      const a = r() * Math.PI * 2, d = 2600 + r() * 5200;
-      centers.push([CX + Math.cos(a) * d, CY + Math.sin(a) * d]);
-    }
-    const margin = 640, tooCloseSpecial = 1500;
-    // 크기가 전부 제각각: 작은 것(0.4)부터 큰 것(1.3)까지 연속적으로 흩어지고, 가로·세로 비율도 관문마다 다르다
-    const rnd = () => 0.4 + 0.75 * Math.pow(r(), 1.2);
+    for (let i = 0; i < 16; i++) centers.push(polar(R_MAP * (0.14 + 0.72 * Math.sqrt(r())), r() * Math.PI * 2));
+    const rim = R_MAP - 1800, tooCloseSpecial = 2200;
+    const rnd = () => 0.4 + 0.75 * Math.pow(r(), 1.2);      // 크기가 전부 제각각(0.4~1.15) + 가로세로 비율도 각각
     let guard = 0;
-    while (pts.length < NORMAL_GATES && guard++ < 90000) {
+    while (pts.length < NORMAL_GATES && guard++ < 200000) {
       let x, y;
-      if (r() < 0.42) {
+      const pick = r();
+      if (pts.length < 10) { [x, y] = polar(3200 + r() * 4200, r() * Math.PI * 2); }          // 처음 들어와도 몇 개는 보이게: 성역 가까이
+      else if (pick < 0.58) {                                                                    // 군집
         const c = centers[(r() * centers.length) | 0];
-        x = c[0] + (r() + r() + r() - 1.5) * 2000; y = c[1] + (r() + r() + r() - 1.5) * 2000;
-      } else { x = margin + r() * (WORLD - 2 * margin); y = margin + r() * (WORLD - 2 * margin); }
-      if (x < margin || y < margin || x > WORLD - margin || y > WORLD - margin) continue;
-      if (Math.hypot(x - CX, y - CY) < SANCT_R + 800) continue;
+        x = c[0] + (r() + r() + r() - 1.5) * 4600; y = c[1] + (r() + r() + r() - 1.5) * 4600;
+      } else { [x, y] = polar(R_MAP * 0.96 * Math.sqrt(r()), r() * Math.PI * 2); }              // 원 전체에 고르게
+      const dC = Math.hypot(x - CX, y - CY);
+      if (dC > rim || dC < SANCT_R + 1700) continue;
       if (SPECIAL.some((s) => Math.hypot(x - s.x, y - s.y) < tooCloseSpecial)) continue;
       const sc = rnd(), sx = sc * (0.78 + 0.5 * r()), sy = sc * (0.85 + 0.35 * r());
-      const rad = 205 * Math.max(sx, sy);                    // 이 관문이 차지하는 대략의 반지름
+      const rad = 205 * Math.max(sx, sy);
       if (pts.some((p) => Math.hypot(x - p[0], y - p[1]) < (rad + p[4]) * 0.85 + 130)) continue;   // 크기에 맞춘 간격
       pts.push([x, y, sx, sy, rad]);
     }
@@ -412,7 +406,7 @@ void main(){
       x: p[0], y: p[1], sx: p[2], sy: p[3], scale: Math.max(p[2], p[3]), rot: (r() - 0.5) * 0.8, v: (r() * 12) | 0,
       phase: r() * 6.28, flip: r() < 0.5 ? -1 : 1,
     }));
-    specials = SPECIAL.map((s, i) => ({ ...s, idx: i, scale: 1.6, phase: i * 2.1, rot: -0.05 }));   // 쌍둥이 틈은 어느 관문보다 크다
+    specials = SPECIAL.map((s, i) => ({ ...s, idx: i, scale: 1.5, phase: i * 2.1, rot: -0.05 }));   // 쌍둥이의 틈은 어느 관문보다 크다
   }
 
   async function prepare(onProgress) {
@@ -425,7 +419,7 @@ void main(){
       const rr = rng32(500 + i * 17);
       rifts.push(makeWound(1000 + i * 37, TINTS[i % 6], 512, { hw: 0.13 + rr() * 0.1, hh: 0.37 + rr() * 0.08, big: false })); await step();
     }
-    rifts.push(makeWound(777, { rim: NEON_PALE, glow: "238,255,107" }, 768, { hw: 0.38, hh: 0.31, big: true })); await step();
+    rifts.push(makeWound(777, { rim: NEON_PALE, glow: "238,255,107" }, 768, { hw: 0.28, hh: 0.37, big: true })); await step();
     await step();
     rifts.forEach((sp) => {                       // 멀리서 볼 때는 작게 줄여 둔 이미지를 쓴다(큰 이미지를 축소해 그리는 비용 제거)
       const half = (src, s) => { const c = mk(s, s); const g = c.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(src, 0, 0, s, s); return c; };
@@ -436,26 +430,13 @@ void main(){
     await step();
     glows.push(makeGlow("238,255,107"), makeGlow("255,244,190")); await step();
     nebulaSprites = ["70,90,170", "110,70,175", "40,120,135", "205,185,80"].map(makeNebula); await step();
-    const r = rng32(99);
-    for (let i = 0; i < 70; i++) {
-      const warm = Math.hypot(0, 0) || 0;
-      const x = r() * WORLD, y = r() * WORLD;
-      const near = Math.hypot(x - CX, y - CY) < 3600;
-      blobs.push({ x, y, s: 2200 + r() * 3800, a: 0.035 + r() * 0.06, k: near && r() < 0.6 ? 3 : (r() * 3) | 0 });
-    }
     await step();
-    nebulaTex = mk(NEB, NEB);
-    {
-      const ng = nebulaTex.getContext("2d"), k = NEB / WORLD;
-      ng.globalCompositeOperation = "lighter";
-      blobs.forEach((bl) => { ng.globalAlpha = Math.min(1, bl.a * 1.15); const s = bl.s * k; ng.drawImage(nebulaSprites[bl.k], bl.x * k - s / 2, bl.y * k - s / 2, s, s); });
-    }
     bloomTex.cool = makeBloom("255,250,215", "238,255,107");
     bloomTex.hot = makeBloom("255,255,240", "244,255,134");
     bloomTex.core = makeBloom("255,255,245", "255,252,200");
     raysTex = [makeRays(1), makeRays(2)];
     initVortexGL();
-    if (!vgl) { for (let i = 0; i < 2; i++) bakes[i] = await bakeSwirl(384, i * 7.3 + 1.7); }
+    if (!vgl) bakes[0] = await bakeSwirl(384, 1.7);
     buildMiniStatic(); await step();
     if (document.fonts && document.fonts.load) {
       try { await Promise.race([document.fonts.load('700 20px "Noto Serif KR"', "페이스리아의 차원의 틈"), new Promise((res) => setTimeout(res, 1500))]); } catch (_) { /* 기본 글꼴 */ }
@@ -475,6 +456,8 @@ void main(){
   const stick = { x: 0, y: 0, id: null };
   const pointers = new Map();
   let dragging = false, dragVel = { x: 0, y: 0 }, lastMove = 0, pinchD = 0;
+  let boostHeld = false;
+  let burn = null;                                   // 불타 재가 되는 연출 진행 상태
 
   const el = {};
   const getEls = () => {
@@ -487,6 +470,9 @@ void main(){
     el.zin = document.getElementById("zoom-in");
     el.zout = document.getElementById("zoom-out");
     el.home = document.getElementById("map-home");
+    el.boost = document.getElementById("boost");
+    el.burn = document.getElementById("burn-canvas");
+    el.toast = document.getElementById("map-toast");
   };
 
   function resize() {
@@ -508,6 +494,7 @@ void main(){
   function bindInput() {
     const c = el.canvas;
     c.addEventListener("pointerdown", (e) => {
+      if (burn) return;
       c.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       tween = null;
@@ -516,6 +503,7 @@ void main(){
       c.classList.add("grabbing");
     });
     c.addEventListener("pointermove", (e) => {
+      if (burn) return;
       const p = pointers.get(e.pointerId); if (!p) return;
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       p.x = e.clientX; p.y = e.clientY;
@@ -537,18 +525,19 @@ void main(){
         c.classList.remove("grabbing");
         if (dragging) {
           const idle = performance.now() - lastMove;
-          if (idle < 90) { vel.x = clamp(dragVel.x, -MAX_SPEED, MAX_SPEED); vel.y = clamp(dragVel.y, -MAX_SPEED, MAX_SPEED); }
+          if (idle < 90) { vel.x = clamp(dragVel.x, -MAX_SPEED * 1.5, MAX_SPEED * 1.5); vel.y = clamp(dragVel.y, -MAX_SPEED * 1.5, MAX_SPEED * 1.5); }
         }
         dragging = false; pinchD = 0;
       } else if (pointers.size === 1) { dragging = true; dragVel = { x: 0, y: 0 }; lastMove = performance.now(); pinchD = 0; }
     };
     c.addEventListener("pointerup", end); c.addEventListener("pointercancel", end);
-    c.addEventListener("wheel", (e) => { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0014), e.clientX, e.clientY); }, { passive: false });
+    c.addEventListener("wheel", (e) => { e.preventDefault(); if (burn) return; zoomAt(Math.exp(-e.deltaY * 0.0014), e.clientX, e.clientY); }, { passive: false });
 
     window.addEventListener("keydown", (e) => {
-      if (!open) return;
+      if (!open || burn) return;
       const k = e.key.toLowerCase();
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(k)) { keys.add(k); tween = null; e.preventDefault(); }
+      if (k === "shift") keys.add("shift");
       if (k === "+" || k === "=") zoomAt(1.25, cw / 2, ch / 2);
       if (k === "-" || k === "_") zoomAt(0.8, cw / 2, ch / 2);
     });
@@ -565,10 +554,15 @@ void main(){
       stick.x = dx / R; stick.y = dy / R;
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
     };
-    s.addEventListener("pointerdown", (e) => { s.setPointerCapture(e.pointerId); stick.id = e.pointerId; tween = null; upd(e); e.stopPropagation(); });
+    s.addEventListener("pointerdown", (e) => { if (burn) return; s.setPointerCapture(e.pointerId); stick.id = e.pointerId; tween = null; upd(e); e.stopPropagation(); });
     s.addEventListener("pointermove", (e) => { if (stick.id === e.pointerId) upd(e); });
     const sEnd = (e) => { if (stick.id !== e.pointerId) return; stick.id = null; stick.x = stick.y = 0; knob.style.transform = ""; };
     s.addEventListener("pointerup", sEnd); s.addEventListener("pointercancel", sEnd);
+
+    // 가속 버튼(터치): 누르고 있는 동안 3배 속도
+    const bEnd = () => { boostHeld = false; el.boost.classList.remove("held"); };
+    el.boost.addEventListener("pointerdown", (e) => { if (burn) return; e.stopPropagation(); el.boost.setPointerCapture(e.pointerId); boostHeld = true; el.boost.classList.add("held"); });
+    el.boost.addEventListener("pointerup", bEnd); el.boost.addEventListener("pointercancel", bEnd);
 
     // 버튼
     el.zin.addEventListener("click", () => zoomAt(1.4, cw / 2, ch / 2));
@@ -578,8 +572,10 @@ void main(){
     // 미니맵: 누르거나 끌면 그 위치로
     const mm = el.mini;
     const jump = (e, smooth) => {
+      if (burn) return;
       const r = mm.getBoundingClientRect();
-      const wx = clamp((e.clientX - r.left) / r.width, 0, 1) * WORLD, wy = clamp((e.clientY - r.top) / r.height, 0, 1) * WORLD;
+      let wx = (clamp((e.clientX - r.left) / r.width, 0, 1) - 0.5) * WORLD, wy = (clamp((e.clientY - r.top) / r.height, 0, 1) - 0.5) * WORLD;
+      const dm = Math.hypot(wx, wy); if (dm > R_MAP * 0.985) { wx *= R_MAP * 0.985 / dm; wy *= R_MAP * 0.985 / dm; }   // 경계 밖으로는 이동하지 않는다
       if (smooth) flyTo(wx, wy, cam.z, 1100); else { tween = null; cam.x = wx; cam.y = wy; vel.x = vel.y = 0; }
     };
     let mmDown = false;
@@ -600,25 +596,25 @@ void main(){
       cam.x = tween.fx + (tween.tx - tween.fx) * e; cam.y = tween.fy + (tween.ty - tween.fy) * e;
       cam.z = Math.exp(Math.log(tween.fz) + (Math.log(tween.tz) - Math.log(tween.fz)) * e);
       if (k >= 1) tween = null;
-    } else if (!dragging) {
+    } else if (!dragging && !burn) {
       let ix = stick.x, iy = stick.y;
       if (keys.has("arrowleft") || keys.has("a")) ix -= 1;
       if (keys.has("arrowright") || keys.has("d")) ix += 1;
       if (keys.has("arrowup") || keys.has("w")) iy -= 1;
       if (keys.has("arrowdown") || keys.has("s")) iy += 1;
-      const l = Math.hypot(ix, iy);
+      const l = Math.hypot(ix, iy), top = MAX_SPEED * (boostHeld || keys.has("shift") ? BOOST : 1);
       if (l > 0.04) {
         if (l > 1) { ix /= l; iy /= l; }
         const k = 1 - Math.exp(-dt / 0.22);
-        vel.x += (ix * MAX_SPEED - vel.x) * k; vel.y += (iy * MAX_SPEED - vel.y) * k;
+        vel.x += (ix * top - vel.x) * k; vel.y += (iy * top - vel.y) * k;
       } else {
         const f = Math.exp(-dt / 0.55); vel.x *= f; vel.y *= f;
         if (Math.abs(vel.x) < 4 && Math.abs(vel.y) < 4) vel.x = vel.y = 0;
       }
       cam.x += vel.x * dt; cam.y += vel.y * dt;
     }
-    if (cam.x < 0) { cam.x = 0; vel.x = 0; } if (cam.x > WORLD) { cam.x = WORLD; vel.x = 0; }
-    if (cam.y < 0) { cam.y = 0; vel.y = 0; } if (cam.y > WORLD) { cam.y = WORLD; vel.y = 0; }
+    // 맵 밖으로 나가려 하면 불타 재가 된다
+    if (!burn && Math.hypot(cam.x - CX, cam.y - CY) >= R_MAP) startBurn(now);
   }
 
   // ───────────────────────── 그리기 ─────────────────────────
@@ -648,36 +644,81 @@ void main(){
   }
 
   function drawGridAndEdge(t) {
-    // 세계 좌표 격자(희미) + 2000단위마다 굵게, 가장자리 경계
+    // 세계 좌표 격자(희미): 500단위(가까이서만) / 2000단위 굵게. 원점은 성역의 중심
     const z = cam.z;
     const vx0 = cam.x - cw / 2 / z, vx1 = cam.x + cw / 2 / z, vy0 = cam.y - ch / 2 / z, vy1 = cam.y + ch / 2 / z;
-    const minor = z > 0.3 ? 500 : 0, major = 2000;
+    const minor = z > 0.3 ? 500 : 0, major = z > 0.08 ? 2000 : 8000;
     ctx.lineWidth = 1 / z;
     for (const [step, alpha] of [[minor, 0.045], [major, 0.11]]) {
       if (!step) continue;
       ctx.strokeStyle = `rgba(238,255,107,${alpha})`;
       ctx.beginPath();
-      for (let x = Math.max(0, Math.ceil(vx0 / step) * step); x <= Math.min(WORLD, vx1); x += step) { ctx.moveTo(x, Math.max(0, vy0)); ctx.lineTo(x, Math.min(WORLD, vy1)); }
-      for (let y = Math.max(0, Math.ceil(vy0 / step) * step); y <= Math.min(WORLD, vy1); y += step) { ctx.moveTo(Math.max(0, vx0), y); ctx.lineTo(Math.min(WORLD, vx1), y); }
+      for (let x = Math.ceil(vx0 / step) * step; x <= vx1; x += step) { ctx.moveTo(x, vy0); ctx.lineTo(x, vy1); }
+      for (let y = Math.ceil(vy0 / step) * step; y <= vy1; y += step) { ctx.moveTo(vx0, y); ctx.lineTo(vx1, y); }
       ctx.stroke();
     }
-    // 세계 경계
+    drawFireRing(t);
+  }
+
+  /** 맵의 경계: 불타는 고리. 경계 밖은 검붉게 가라앉고, 불길이 혀처럼 일렁이며 불씨가 날린다 */
+  function drawFireRing(t) {
+    const z = cam.z, dC = Math.hypot(cam.x - CX, cam.y - CY), viewR = Math.hypot(cw, ch) / 2 / z;
+    if (Math.abs(dC - R_MAP) > viewR + 800) return;
+    const px = (n) => n / z;
+    const vx0 = cam.x - cw / 2 / z - 20, vy0 = cam.y - ch / 2 / z - 20, vw = cw / z + 40, vh = ch / z + 40;
     ctx.save();
-    ctx.shadowColor = NEON; ctx.shadowBlur = 24;
-    ctx.strokeStyle = "rgba(244,255,134,0.75)"; ctx.lineWidth = 2.5 / z;
-    ctx.strokeRect(0, 0, WORLD, WORLD);
+    ctx.beginPath(); ctx.rect(vx0, vy0, vw, vh); ctx.arc(CX, CY, R_MAP, 0, Math.PI * 2, true);       // 경계 바깥만
+    ctx.fillStyle = "rgba(16,2,2,0.9)"; ctx.fill();
+    ctx.globalCompositeOperation = "lighter";
+    const fl = 0.85 + 0.15 * Math.sin(t * 3.1) + 0.05 * Math.sin(t * 9.3);
+    for (const [w, a, c] of [[130, 0.05, "255,50,10"], [58, 0.1, "255,85,15"], [22, 0.2, "255,135,30"]]) {
+      ctx.strokeStyle = `rgba(${c},${a * fl})`; ctx.lineWidth = px(w); ctx.beginPath(); ctx.arc(CX, CY, R_MAP, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.strokeStyle = "rgba(255,228,160,0.95)"; ctx.lineWidth = px(2.5); ctx.beginPath(); ctx.arc(CX, CY, R_MAP, 0, Math.PI * 2); ctx.stroke();
+    // 화염의 혀
+    const ang0 = Math.atan2(cam.y - CY, cam.x - CX), half = Math.min(Math.PI, viewR / R_MAP * 1.1 + 0.02);
+    const spacing = px(34), da = spacing / R_MAP;
+    const i0 = Math.floor((ang0 - half) / da), i1 = Math.ceil((ang0 + half) / da);
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = i0; i <= i1; i++) {
+      const h1 = hash2(i, 0, 81), h2 = hash2(i, 0, 82), a = i * da, nx = Math.cos(a), ny = Math.sin(a);
+      const hgt = px(60 + 170 * h1) * (0.55 + 0.45 * Math.sin(t * (4 + h2 * 5) + h1 * 40)), w = px(14 + 22 * h2), sway = Math.sin(t * 2.5 + h1 * 20) * px(10);
+      const bx = CX + nx * R_MAP, by = CY + ny * R_MAP, tx = bx + nx * hgt - ny * sway, ty = by + ny * hgt + nx * sway;
+      const g = ctx.createLinearGradient(bx, by, tx, ty);
+      g.addColorStop(0, "rgba(255,200,80,0.55)"); g.addColorStop(0.5, "rgba(255,95,20,0.3)"); g.addColorStop(1, "rgba(120,10,0,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(bx - ny * w, by + nx * w);
+      ctx.quadraticCurveTo(bx + nx * hgt * 0.5 - ny * w * 0.4, by + ny * hgt * 0.5 + nx * w * 0.4, tx, ty);
+      ctx.quadraticCurveTo(bx + nx * hgt * 0.5 + ny * w * 0.4, by + ny * hgt * 0.5 - nx * w * 0.4, bx + ny * w, by - nx * w);
+      ctx.closePath(); ctx.fill();
+    }
+    // 불씨
+    for (let i = 0; i < 46; i++) {
+      const a = ang0 + (hash2(i, 0, 91) - 0.5) * 2 * half, f = (t * (0.12 + 0.2 * hash2(i, 0, 92)) + hash2(i, 0, 93)) % 1;
+      const r = R_MAP + f * px(260 + 220 * hash2(i, 0, 94)), sz = px(1.6 + 2.2 * hash2(i, 0, 95));
+      ctx.globalAlpha = Math.sin(Math.PI * f) * 0.9; ctx.fillStyle = hash2(i, 0, 96) < 0.4 ? "#ffd27a" : "#ff7a2a";
+      ctx.fillRect(CX + Math.cos(a) * r + Math.sin(t * 2 + i) * px(6), CY + Math.sin(a) * r, sz, sz);
+    }
     ctx.restore();
   }
 
   function drawNebula() {
-    // 미리 구워 둔 세계 전체 성운 한 장에서 보이는 부분만 그린다 (대형 이미지를 매 프레임 겹쳐 그리던 비용 제거)
-    const z = cam.z, k = NEB / WORLD;
-    const ax0 = Math.max(0, cam.x - cw / 2 / z), ay0 = Math.max(0, cam.y - ch / 2 / z);
-    const ax1 = Math.min(WORLD, cam.x + cw / 2 / z), ay1 = Math.min(WORLD, cam.y + ch / 2 / z);
-    if (ax1 <= ax0 || ay1 <= ay0) return;
+    // 세계가 매우 크므로 타일(7000 단위)마다 해시로 성운 덩어리 1~2개를 만들어, 보이는 타일만 그린다
+    const z = cam.z, T = 7000;
+    const vx0 = cam.x - cw / 2 / z, vx1 = cam.x + cw / 2 / z, vy0 = cam.y - ch / 2 / z, vy1 = cam.y + ch / 2 / z;
+    const i0 = Math.floor((vx0 - 3500) / T), i1 = Math.floor((vx1 + 3500) / T), j0 = Math.floor((vy0 - 3500) / T), j1 = Math.floor((vy1 + 3500) / T);
     ctx.globalCompositeOperation = "lighter";
-    ctx.drawImage(nebulaTex, ax0 * k, ay0 * k, (ax1 - ax0) * k, (ay1 - ay0) * k, ax0, ay0, ax1 - ax0, ay1 - ay0);
-    ctx.globalCompositeOperation = "source-over";
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+      const nblob = hash2(i, j, 1) < 0.5 ? 1 : 2;
+      for (let n = 0; n < nblob; n++) {
+        const x = (i + hash2(i, j, 10 + n)) * T, y = (j + hash2(i, j, 20 + n)) * T, s = 2600 + hash2(i, j, 30 + n) * 3600;
+        if (Math.hypot(x, y) > R_MAP + 3000) continue;
+        const near = Math.hypot(x, y) < 6000, k = near && hash2(i, j, 40 + n) < 0.6 ? 3 : (hash2(i, j, 50 + n) * 3) | 0;
+        ctx.globalAlpha = 0.035 + hash2(i, j, 60 + n) * 0.06;
+        ctx.drawImage(nebulaSprites[k], x - s / 2, y - s / 2, s, s);
+      }
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
   }
 
   function drawSanctuary(t) {
@@ -795,22 +836,21 @@ void main(){
     const sp = rifts[12], S = sp.S, k = s.scale, sz = S * k;
     const flick = 0.9 + 0.1 * Math.sin(t * 1.9 + s.phase) + 0.04 * Math.sin(t * 7.3 + s.phase);
     const W = (u, v) => [(u - S / 2) * k, (v - S / 2) * k];
-    const [lx, ly] = W(sp.vc[0][0], sp.vc[0][1]), [rx, ry] = W(sp.vc[1][0], sp.vc[1][1]);
+    const [vx, vy] = W(sp.vc[0][0], sp.vc[0][1]);
     const vrW = sp.vr * k;
     ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rot);
 
-    // ── 사실적인 빛: 틈 전체의 낮은 번짐 → 두 소용돌이 각각의 번짐과 핵 → 두 곳에서 뻗는 빛줄기·렌즈 광선 ──
+    // ── 사실적인 빛: 틈 전체의 낮은 번짐 → 소용돌이의 번짐과 핵 → 빛줄기·렌즈 광선 ──
     ctx.globalCompositeOperation = "lighter";
     const bl = (tex, x, y, rad, a) => { ctx.globalAlpha = Math.min(1, a * flick); ctx.drawImage(tex, x - rad, y - rad, rad * 2, rad * 2); };
-    bl(bloomTex.cool, 0, 0, sz * 1.5, 0.17);
-    for (const [x, y] of [[lx, ly], [rx, ry]]) { bl(bloomTex.hot, x, y, vrW * 2.6, 0.38); bl(bloomTex.core, x, y, vrW * 1.0, 0.5); }
-    const rr = sz * 1.35;
-    for (const [x, y, dir] of [[lx, ly, 1], [rx, ry, -1]]) {
-      ctx.save(); ctx.translate(x, y); ctx.rotate(t * 0.03 * dir + s.phase); ctx.globalAlpha = 0.8 * flick; ctx.drawImage(raysTex[dir > 0 ? 0 : 1], -rr, -rr, rr * 2, rr * 2); ctx.restore();
-    }
-    const hg = ctx.createRadialGradient(0, 0, 0, 0, 0, sz * 1.6);
+    bl(bloomTex.cool, 0, 0, sz * 1.3, 0.17);
+    bl(bloomTex.hot, vx, vy, vrW * 2.5, 0.4); bl(bloomTex.core, vx, vy, vrW * 0.95, 0.52);
+    const rr = sz * 1.25;
+    ctx.save(); ctx.translate(vx, vy); ctx.rotate(t * 0.03 + s.phase); ctx.globalAlpha = 0.85 * flick; ctx.drawImage(raysTex[0], -rr, -rr, rr * 2, rr * 2); ctx.restore();
+    ctx.save(); ctx.translate(vx, vy); ctx.rotate(-t * 0.021 - s.phase); ctx.globalAlpha = 0.6 * flick; ctx.drawImage(raysTex[1], -rr, -rr, rr * 2, rr * 2); ctx.restore();
+    const hg = ctx.createRadialGradient(0, 0, 0, 0, 0, sz * 1.5);
     hg.addColorStop(0, `rgba(255,255,235,${0.45 * flick})`); hg.addColorStop(0.3, `rgba(244,255,134,${0.14 * flick})`); hg.addColorStop(1, "rgba(238,255,107,0)");
-    ctx.save(); ctx.scale(1, 0.016); ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, 0, sz * 1.6, 0, 7); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.translate(vx, vy); ctx.scale(1, 0.016); ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, 0, sz * 1.5, 0, 7); ctx.fill(); ctx.restore();
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
 
     // ── 틈 본체 ──
@@ -820,48 +860,41 @@ void main(){
       ctx.save();
       ctx.beginPath(); sp.pts.forEach(([u, v], i) => { const [x, y] = W(u, v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.clip();
       ctx.fillStyle = "#000"; ctx.fillRect(-sz / 2, -sz / 2, sz, sz);
-      const halfS = Math.max(sp.hw, sp.hh) * 1.06, half = halfS * k;   // 틈 전체를 덮는 정사각형
+      const halfS = Math.max(sp.hw, sp.hh) * 1.06, half = halfS * k;     // 틈 전체를 덮는 정사각형
       if (vgl) {
         const R = clamp(Math.round(half * 2 * z * dpr * vq), 64, VORTEX_MAX);
         vortexDrawn = true;
-        renderVortex(R, t, 1, 1.7, (sp.vc[1][0] - sp.cx) / halfS, sp.vr / halfS);
-        ctx.drawImage(vgl.cv, 0, vgl.cv.height - R, R, R, -half, -half, half * 2, half * 2);
+        // 소용돌이 중심이 틈 중심과 같다고 보고 정사각형 중앙에 그린다 (uRs: 정사각형 대비 소용돌이 반지름)
+        renderVortex(R, t, 1, 1.7, 0, sp.vr / halfS);
+        ctx.drawImage(vgl.cv, 0, vgl.cv.height - R, R, R, vx - half, vy - half, half * 2, half * 2);
       } else {
-        // WebGL 없음/손실: 구워 둔 질감을 서로 다른 속도로 돌려 겹쳐 흐름을 흉내 낸다 (쌍둥이는 서로 반대로 돈다)
-        for (let j = 0; j < 2; j++) {
-          if (!bakes[j] && !bakeBusy[j]) { bakeBusy[j] = true; bakeSwirl(256, j * 7.3 + 1.7).then((c) => { bakes[j] = c; }); }
-          const bk = bakes[j]; if (!bk) continue;
-          const [x, y] = j ? [rx, ry] : [lx, ly], dv = j ? -1 : 1, h1 = vrW * 1.25, h2 = h1 * 1.18;
-          ctx.save(); ctx.translate(x, y);
-          ctx.globalCompositeOperation = "lighter";      // 검은 모서리가 이웃 소용돌이를 가리지 않도록 가산 합성
-          ctx.save(); ctx.rotate(t * 0.32 * dv); ctx.drawImage(bk, -h1, -h1, h1 * 2, h1 * 2); ctx.restore();
+        // WebGL 없음/손실: 구워 둔 질감을 서로 다른 속도로 돌려 겹쳐 흐름을 흉내 낸다
+        if (!bakes[0] && !bakeBusy[0]) { bakeBusy[0] = true; bakeSwirl(256, 1.7).then((c) => { bakes[0] = c; }); }
+        const bk = bakes[0];
+        if (bk) {
+          const h1 = vrW * 1.25, h2 = h1 * 1.18;
+          ctx.save(); ctx.translate(vx, vy); ctx.globalCompositeOperation = "lighter";
+          ctx.save(); ctx.rotate(t * 0.32); ctx.drawImage(bk, -h1, -h1, h1 * 2, h1 * 2); ctx.restore();
           ctx.globalAlpha = 0.42;
-          ctx.save(); ctx.rotate(-t * 0.21 * dv + 1.3); ctx.drawImage(bk, -h2, -h2, h2 * 2, h2 * 2); ctx.restore();
-          ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
-          ctx.restore();
+          ctx.save(); ctx.rotate(-t * 0.21 + 1.3); ctx.drawImage(bk, -h2, -h2, h2 * 2, h2 * 2); ctx.restore();
+          ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; ctx.restore();
         }
       }
       ctx.globalCompositeOperation = "lighter";
-      for (const [x, y] of [[lx, ly], [rx, ry]]) {
-        const cg = ctx.createRadialGradient(x, y, 0, x, y, vrW * 0.34);
-        cg.addColorStop(0, `rgba(255,255,255,${flick})`); cg.addColorStop(0.35, "rgba(255,252,200,0.7)"); cg.addColorStop(1, "rgba(238,255,107,0)");
-        ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(x, y, vrW * 0.34, 0, 7); ctx.fill();
-      }
+      const cg = ctx.createRadialGradient(vx, vy, 0, vx, vy, vrW * 0.34);
+      cg.addColorStop(0, `rgba(255,255,255,${flick})`); cg.addColorStop(0.35, "rgba(255,252,200,0.7)"); cg.addColorStop(1, "rgba(238,255,107,0)");
+      ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(vx, vy, vrW * 0.34, 0, 7); ctx.fill();
       ctx.restore();
     }
-    // ── 두 소용돌이로 빨려 드는 빛 ──
-    drawInflow(lx, ly, 1, vrW * 2.3, t, 11, z);
-    drawInflow(rx, ry, -1, vrW * 2.3, t, 23, z);
+    // ── 소용돌이로 빨려 드는 빛 (소용돌이 하나) ──
+    drawInflow(vx, vy, 1, vrW * 2.3, t, 11, z);
 
-    // 이름표 (두 소용돌이 아래 이름, 아래쪽에 전체 이름)
+    // 이름표
     ctx.rotate(-s.rot);
-    const fs = Math.max(18 / z, 30), sub = Math.max(13 / z, 22);
-    ctx.textAlign = "center";
-    ctx.shadowColor = NEON; ctx.shadowBlur = 14; ctx.fillStyle = NEON_PALE;
-    ctx.font = `700 ${sub}px "Noto Serif KR", serif`;
-    ctx.fillText("페이스리아", lx, sp.hh * k + sub * 1.7); ctx.fillText("오비투아리바", rx, sp.hh * k + sub * 1.7);
+    const fs = Math.max(18 / z, 30);
+    ctx.textAlign = "center"; ctx.shadowColor = NEON; ctx.shadowBlur = 16; ctx.fillStyle = NEON_PALE;
     ctx.font = `700 ${fs}px "Noto Serif KR", serif`;
-    ctx.fillText(s.name, 0, sp.hh * k + sub * 1.7 + fs * 1.5);
+    ctx.fillText(s.name, 0, sp.hh * k + fs * 1.5);
     ctx.restore();
   }
 
@@ -905,45 +938,43 @@ void main(){
   function drawAxisLabels() {
     ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.font = '500 10px "Cinzel", serif'; ctx.fillStyle = "rgba(244,255,134,0.4)";
-    const z = cam.z;
-    for (let x = Math.ceil((cam.x - cw / 2 / z) / 2000) * 2000; x <= cam.x + cw / 2 / z; x += 2000) {
-      if (x < 0 || x > WORLD) continue; ctx.fillText(`X ${x / 1000}`, (x - cam.x) * z + cw / 2 + 4, ch - 8);
-    }
-    for (let y = Math.ceil((cam.y - ch / 2 / z) / 2000) * 2000; y <= cam.y + ch / 2 / z; y += 2000) {
-      if (y < 0 || y > WORLD) continue; ctx.fillText(`Y ${y / 1000}`, 8, (y - cam.y) * z + ch / 2 - 4);
-    }
+    const z = cam.z, step = z > 0.08 ? 2000 : 8000, f = (v) => `${v > 0 ? "+" : ""}${v / 1000}`;
+    for (let x = Math.ceil((cam.x - cw / 2 / z) / step) * step; x <= cam.x + cw / 2 / z; x += step) ctx.fillText(`X ${f(x)}`, (x - cam.x) * z + cw / 2 + 4, ch - 8);
+    for (let y = Math.ceil((cam.y - ch / 2 / z) / step) * step; y <= cam.y + ch / 2 / z; y += step) ctx.fillText(`Y ${f(y)}`, 8, (y - cam.y) * z + ch / 2 - 4);
     ctx.restore();
   }
 
   function buildMiniStatic() {
-    const S = 220, c = mk(S, S), g = c.getContext("2d"), k = S / WORLD;
-    g.fillStyle = "rgba(2,3,10,0.9)"; g.fillRect(0, 0, S, S);
-    g.strokeStyle = "rgba(238,255,107,0.08)"; g.lineWidth = 1; g.beginPath();
-    for (let i = 1; i < 8; i++) { g.moveTo(i * S / 8, 0); g.lineTo(i * S / 8, S); g.moveTo(0, i * S / 8); g.lineTo(S, i * S / 8); }
-    g.stroke();
-    g.strokeStyle = "rgba(251,255,200,0.9)"; g.lineWidth = 1.2; g.beginPath(); g.arc(S / 2, S / 2, SANCT_R * k, 0, 7); g.stroke();
-    gates.forEach((p, i) => { const t = TINTS[p.v % 6]; g.fillStyle = t.rim; g.globalAlpha = 0.85; g.fillRect(p.x * k - 0.9, p.y * k - 0.9, 1.8, 1.8); });
-    g.globalAlpha = 1;
+    const S = 220, c = mk(S, S), g = c.getContext("2d"), k = S / WORLD, h = S / 2;
+    g.beginPath(); g.arc(h, h, h - 1, 0, 7); g.fillStyle = "rgba(2,3,10,0.92)"; g.fill();
+    g.save(); g.beginPath(); g.arc(h, h, h - 1, 0, 7); g.clip();
+    g.strokeStyle = "rgba(238,255,107,0.09)"; g.lineWidth = 1;
+    [0.25, 0.5, 0.75].forEach((q) => { g.beginPath(); g.arc(h, h, (h - 1) * q, 0, 7); g.stroke(); });
+    g.beginPath(); g.moveTo(h, 0); g.lineTo(h, S); g.moveTo(0, h); g.lineTo(S, h); g.stroke();
+    g.strokeStyle = "rgba(251,255,200,0.9)"; g.lineWidth = 1.2; g.beginPath(); g.arc(h, h, Math.max(2, SANCT_R * k), 0, 7); g.stroke();
+    gates.forEach((p) => { const t = TINTS[p.v % 6]; g.fillStyle = t.rim; g.globalAlpha = 0.85; g.fillRect(h + p.x * k - 0.9, h + p.y * k - 0.9, 1.8, 1.8); });
+    g.globalAlpha = 1; g.restore();
+    g.strokeStyle = "rgba(255,130,40,0.95)"; g.lineWidth = 2; g.shadowColor = "rgba(255,90,10,0.9)"; g.shadowBlur = 6; g.beginPath(); g.arc(h, h, h - 2, 0, 7); g.stroke();
     miniStatic = c;
   }
 
   function drawMini(t) {
-    const m = el.mini, mg = m.getContext("2d"), S = m.width;
+    const m = el.mini, mg = m.getContext("2d"), S = m.width, h = S / 2;
     mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, S, S);
     mg.drawImage(miniStatic, 0, 0, S, S);
     const k = S / WORLD;
-    // 특별 관문
-    specials.forEach((s) => {
-      const p = 0.5 + 0.5 * Math.sin(t * 2.4 + s.phase);
-      const gr = mg.createRadialGradient(s.x * k, s.y * k, 0, s.x * k, s.y * k, 10 * dpr);
-      gr.addColorStop(0, `rgba(255,255,230,${0.9})`); gr.addColorStop(0.3, `rgba(238,255,107,${0.45 + p * 0.3})`); gr.addColorStop(1, "rgba(238,255,107,0)");
-      mg.fillStyle = gr; mg.beginPath(); mg.arc(s.x * k, s.y * k, 10 * dpr, 0, 7); mg.fill();
-      mg.fillStyle = "#fff"; mg.beginPath(); mg.arc(s.x * k, s.y * k, 1.8 * dpr, 0, 7); mg.fill();
+    specials.forEach((s) => {                                // 쌍둥이의 틈
+      const p = 0.5 + 0.5 * Math.sin(t * 2.4 + s.phase), x = h + s.x * k, y = h + s.y * k;
+      const gr = mg.createRadialGradient(x, y, 0, x, y, 10 * dpr);
+      gr.addColorStop(0, "rgba(255,255,230,0.9)"); gr.addColorStop(0.3, `rgba(238,255,107,${0.45 + p * 0.3})`); gr.addColorStop(1, "rgba(238,255,107,0)");
+      mg.fillStyle = gr; mg.beginPath(); mg.arc(x, y, 10 * dpr, 0, 7); mg.fill();
+      mg.fillStyle = "#fff"; mg.beginPath(); mg.arc(x, y, 1.8 * dpr, 0, 7); mg.fill();
     });
-    // 현재 시야
-    const vw = cw / cam.z * k, vh = ch / cam.z * k;
+    // 현재 시야(맵이 매우 커서 작은 상자 + 십자로 표시)
+    const vw = Math.max(cw / cam.z * k, 6 * dpr), vh = Math.max(ch / cam.z * k, 6 * dpr), x = h + cam.x * k, y = h + cam.y * k;
     mg.strokeStyle = "#fbffc8"; mg.lineWidth = 1.4 * dpr; mg.shadowColor = NEON; mg.shadowBlur = 6 * dpr;
-    mg.strokeRect(cam.x * k - vw / 2, cam.y * k - vh / 2, vw, vh);
+    mg.strokeRect(x - vw / 2, y - vh / 2, vw, vh);
+    mg.beginPath(); mg.moveTo(x - vw / 2 - 5 * dpr, y); mg.lineTo(x + vw / 2 + 5 * dpr, y); mg.moveTo(x, y - vh / 2 - 5 * dpr); mg.lineTo(x, y + vh / 2 + 5 * dpr); mg.stroke();
     mg.shadowBlur = 0;
   }
 
@@ -988,29 +1019,177 @@ void main(){
     // 화면 공간 요소
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // 경계 밖 사선 무늬
-    if (!SKIP.has('hud')) { drawOutside(); drawAxisLabels(); drawEdgeMarkers(t); }
+    if (!SKIP.has('hud')) { drawAxisLabels(); drawEdgeMarkers(t); }
     if (!SKIP.has('mini')) drawMini(t);
+    updateBurn(now, Math.hypot(cam.x - CX, cam.y - CY));
     hudT += dt;
     if (hudT > 0.12) {
       hudT = 0;
-      const dC = Math.hypot(cam.x - CX, cam.y - CY);
-      el.coords.textContent = `X ${Math.round(cam.x).toString().padStart(5, "0")}  Y ${Math.round(cam.y).toString().padStart(5, "0")}  ·  성역까지 ${(dC / 1000).toFixed(1)}k`;
+      const dC = Math.hypot(cam.x - CX, cam.y - CY), sg = (v) => `${v < 0 ? "-" : "+"}${Math.abs(Math.round(v)).toString().padStart(5, "0")}`;
+      el.coords.textContent = `X ${sg(cam.x)}  Y ${sg(cam.y)}  ·  성역까지 ${(dC / 1000).toFixed(1)}k  ·  경계까지 ${Math.max(0, (R_MAP - dC) / 1000).toFixed(1)}k`;
     }
   }
 
-  function drawOutside() {
-    // 세계 밖 영역: 화면 공간에서 사선 무늬
-    const z = cam.z;
-    const x0 = (0 - cam.x) * z + cw / 2, y0 = (0 - cam.y) * z + ch / 2, x1 = (WORLD - cam.x) * z + cw / 2, y1 = (WORLD - cam.y) * z + ch / 2;
-    if (x0 <= 0 && y0 <= 0 && x1 >= cw && y1 >= ch) return;
-    ctx.save();
-    ctx.beginPath(); ctx.rect(0, 0, cw, ch); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip("evenodd");
-    ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(0, 0, cw, ch);
-    ctx.strokeStyle = "rgba(238,255,107,0.09)"; ctx.lineWidth = 7;
-    ctx.beginPath();
-    for (let k = -ch; k < cw + ch; k += 26) { ctx.moveTo(k, 0); ctx.lineTo(k - ch, ch); }
-    ctx.stroke();
-    ctx.restore();
+  // ───────────────────────── 맵 밖으로 나가면: 불타오르고 → 재가 되고 → 성역 한가운데서 다시 태어난다 ─────────────────────────
+  const BURN_T = { fire: 2700, ash: 1700, reborn: 2900 };      // ms
+  const BURN_FS = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec2 uRes;
+uniform float uTime, uFire, uAsh, uReborn, uHeat;
+float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ v += a * vnoise(p); p = p * 2.0 + 1.7; a *= 0.5; } return v; }
+vec3 fireCol(float f){
+  vec3 c = vec3(0.0);
+  c = mix(c, vec3(0.45, 0.03, 0.0), smoothstep(0.0, 0.28, f));
+  c = mix(c, vec3(1.0, 0.34, 0.02), smoothstep(0.22, 0.58, f));
+  c = mix(c, vec3(1.0, 0.8, 0.22), smoothstep(0.5, 0.88, f));
+  c = mix(c, vec3(1.0, 0.97, 0.78), smoothstep(0.86, 1.25, f));
+  return c;
+}
+float flakes(vec2 uv, float t, float dens, float dir){
+  vec2 g = uv * vec2(30.0, 17.0) + vec2(0.0, t * dir * 1.4);
+  vec2 id = floor(g), fr = fract(g) - 0.5;
+  float h = hash(id); if (h < dens) return 0.0;
+  vec2 off = vec2(hash(id + 3.1), hash(id + 7.7)) - 0.5; off.x += sin(t * 2.0 + h * 30.0) * 0.25;
+  return smoothstep(0.13, 0.0, length(fr - off * 0.7)) * (0.4 + 0.6 * hash(id + 1.3));
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes;
+  float asp = uRes.x / uRes.y;
+  vec2 p = (uv - 0.5) * vec2(asp, 1.0) * 2.0;
+  float ed = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+  vec2 q = vec2(uv.x * asp * 4.6, uv.y * 2.3 - uTime * 2.1);      // 세로로 길게 솟는 불꽃결
+  float n = fbm(q + vec2(0.0, fbm(q * 1.6 + uTime * 0.35) * 1.3));      // 위로 솟는 불꽃의 일렁임
+
+  // 경계에 다가갈 때: 화면 가장자리가 달아오른다
+  float hv = uHeat * smoothstep(0.11 + 0.06 * n, 0.0, ed + (n - 0.5) * 0.06);
+  vec3 heatC = fireCol(clamp(hv * 0.8 + 0.12, 0.0, 0.72)) * hv * 0.8;
+
+  // 본 불길: 가장자리에서 안쪽으로 번져 오른다
+  float F = uFire * 1.35 - ed * 1.45 + (n - 0.42) * 0.55;
+  float fa = smoothstep(0.0, 0.2, F) * step(0.0001, uFire);
+  vec3 fc = fireCol(clamp(F * 1.25, 0.0, 1.25) + (n - 0.5) * 0.12) * (0.75 + 0.5 * n);
+  float charK = smoothstep(0.55, 1.1, F);
+  fc = mix(fc, vec3(0.05, 0.01, 0.0) + fc * 0.25, charK * 0.65 * smoothstep(0.0, 1.0, uAsh + 0.3));   // 오래 탄 곳은 숯처럼 어두워진다
+
+  // 재: 불이 사그라들며 회색 재로 덮이고 재가 흩날린다
+  vec3 ash = vec3(0.10, 0.095, 0.095) + vec3(0.12, 0.115, 0.11) * n * n + vec3(0.22) * flakes(uv * vec2(asp, 1.0), uTime, 0.86, -1.0) * uAsh;
+  float fireFade = 1.0 - uAsh;
+  float aF = fa * fireFade;
+  float ashA = clamp(uAsh * 1.2, 0.0, 1.0) * clamp(uFire * 1.2, 0.0, 1.0);
+  vec3 outc = ash * ashA * (1.0 - aF) + fc * aF + heatC * (1.0 - aF);
+  float outa = clamp(aF + ashA * (1.0 - aF) + hv * 0.6 * (1.0 - aF), 0.0, 1.0);
+  float emb = flakes(uv * vec2(asp, 1.0), uTime, 0.88, 1.0) * uFire * (1.0 - uAsh);       // 솟는 불씨
+  outc += vec3(1.0, 0.55, 0.12) * emb * 1.4; outa = max(outa, emb);
+
+  // 다시 태어남: 중앙에서 빛이 퍼지며 재를 걷어낸다
+  float rr = length(p);
+  float edgeN = (n - 0.5) * 0.35;
+  float Rv = uReborn * 2.7;
+  float rv = uReborn > 0.0001 ? smoothstep(Rv - 0.12, Rv + 0.12, rr + edgeN) : 1.0;
+  float ring = exp(-pow((rr + edgeN - Rv) / 0.08, 2.0)) * smoothstep(0.0, 0.08, uReborn) * (1.0 - smoothstep(0.9, 1.0, uReborn));
+  outc = outc * rv + vec3(1.0, 0.93, 0.7) * ring * 1.6;
+  outa = max(outa * rv, ring * 0.9);
+  float flash = exp(-uReborn * 4.5) * step(0.0001, uReborn) * exp(-rr * 2.0);
+  outc += vec3(1.0, 0.97, 0.85) * flash * 1.5; outa = max(outa, flash);
+  gl_FragColor = vec4(min(outc, vec3(1.0)), clamp(outa, 0.0, 1.0));
+}`;
+  let burnGL = null, burn2d = null;
+  function initBurn() {
+    const c = el.burn;
+    try {
+      const gl = c.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: false });
+      if (!gl) throw new Error("no webgl");
+      const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+      const prog = gl.createProgram();
+      gl.attachShader(prog, sh(gl.VERTEX_SHADER, VORTEX_VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, BURN_FS));
+      gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      gl.useProgram(prog);
+      const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(prog, "aPos"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      const U = {}; ["uRes", "uTime", "uFire", "uAsh", "uReborn", "uHeat"].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
+      burnGL = { gl, U };
+    } catch (e) {
+      burnGL = null;
+      try { burn2d = c.getContext("2d"); } catch (_) { burn2d = null; }
+    }
+  }
+  const easeIO = (x) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
+
+  function showToast(text) {
+    el.toast.textContent = text; el.toast.classList.add("on");
+  }
+  function startBurn(now) {
+    if (burn) return;
+    burn = { t0: now, reset: false, stage: 0 };
+    vel.x = vel.y = 0; tween = null; keys.clear(); stick.x = stick.y = 0; dragging = false; pointers.clear(); boostHeld = false;
+    el.boost.classList.remove("held");
+    el.screen.classList.add("burning");
+  }
+  function endBurn() {
+    burn = null; el.toast.classList.remove("on"); el.screen.classList.remove("burning");
+  }
+  function rebirth() {
+    cam.x = CX; cam.y = CY; cam.z = 1.1; vel.x = vel.y = 0;
+    flyTo(CX, CY, clamp(Math.min(cw, ch) / (SANCT_R * 4.4), 0.1, 0.42), 2800);
+    showToast("성역에서 다시 태어납니다");
+  }
+
+  function updateBurn(now, dC) {
+    let fire = 0, ash = 0, reb = 0;
+    let heat = clamp((dC - R_MAP * 0.86) / (R_MAP * 0.14), 0, 1); heat = heat * heat * (3 - 2 * heat);
+    if (burn) {
+      const tb = now - burn.t0, A = BURN_T.fire, B = A + BURN_T.ash, C = B + BURN_T.reborn;
+      heat = 0;
+      if (tb < A) fire = Math.pow(tb / A, 1.25);
+      else if (tb < B) {
+        fire = 1; ash = (tb - A) / BURN_T.ash;
+        if (burn.stage < 1) { burn.stage = 1; showToast("불길이 모든 것을 삼켰습니다…"); }
+      } else {
+        fire = 1; ash = 1;
+        if (!burn.reset) { burn.reset = true; rebirth(); }
+        reb = Math.min(1, (tb - B) / BURN_T.reborn);
+      }
+      if (tb >= C) endBurn();
+    }
+    const on = !!burn || heat > 0.01;
+    el.burn.classList.toggle("on", on);
+    if (!on) return;
+    // 해상도는 절반으로(불꽃은 부드러워 충분하고 비용이 크게 줄어든다)
+    const w = Math.max(2, Math.floor(cw * 0.5)), h = Math.max(2, Math.floor(ch * 0.5));
+    if (el.burn.width !== w || el.burn.height !== h) { el.burn.width = w; el.burn.height = h; }
+    const tt = (now - t0) / 1000;
+    if (burnGL) {
+      const { gl, U } = burnGL;
+      gl.viewport(0, 0, w, h);
+      gl.uniform2f(U.uRes, w, h); gl.uniform1f(U.uTime, tt); gl.uniform1f(U.uFire, fire); gl.uniform1f(U.uAsh, ash); gl.uniform1f(U.uReborn, reb); gl.uniform1f(U.uHeat, heat);
+      gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    } else if (burn2d) {
+      // WebGL 없음: 가장자리에서 번지는 붉은 불빛 → 재 → 중앙에서 퍼지는 빛으로 단순화
+      const g = burn2d; g.clearRect(0, 0, w, h);
+      const R = Math.hypot(w, h) / 2;
+      const hot = Math.max(heat * 0.8, fire * (1 - ash));
+      if (hot > 0.01) {
+        const gr = g.createRadialGradient(w / 2, h / 2, R * (1 - 0.9 * Math.max(fire, heat * 0.4)), w / 2, h / 2, R);
+        gr.addColorStop(0, "rgba(255,80,10,0)"); gr.addColorStop(0.55, `rgba(255,110,20,${0.55 * hot})`); gr.addColorStop(1, `rgba(255,220,120,${0.95 * hot})`);
+        g.fillStyle = gr; g.fillRect(0, 0, w, h);
+      }
+      if (ash > 0) { g.fillStyle = `rgba(30,28,28,${Math.min(1, ash * 1.2)})`; g.fillRect(0, 0, w, h); }
+      if (reb > 0) {
+        g.save(); g.globalCompositeOperation = "destination-out";
+        const rr = reb * R * 1.05; const gr = g.createRadialGradient(w / 2, h / 2, Math.max(0, rr - R * 0.2), w / 2, h / 2, rr + 1);
+        gr.addColorStop(0, "rgba(0,0,0,1)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(0, 0, w, h); g.restore();
+        g.strokeStyle = `rgba(255,240,190,${0.9 * (1 - reb)})`; g.lineWidth = 6; g.beginPath(); g.arc(w / 2, h / 2, reb * R * 1.05, 0, 7); g.stroke();
+      }
+    }
   }
 
   // ───────────────────────── 공개 API ─────────────────────────
@@ -1018,6 +1197,7 @@ void main(){
     getEls();
     ctx = el.canvas.getContext("2d", { alpha: false });
     bindInput();
+    initBurn();
   }
 
   function show() {
@@ -1027,7 +1207,7 @@ void main(){
     document.body.classList.add("map-open");
     resize();
     cam.x = CX; cam.y = CY; cam.z = 1.0; vel.x = vel.y = 0;
-    flyTo(CX, CY, clamp(Math.min(cw, ch) / (SANCT_R * 2.7), 0.14, 0.42), 2600);
+    flyTo(CX, CY, clamp(Math.min(cw, ch) / (SANCT_R * 4.4), 0.1, 0.42), 2600);
     last = performance.now(); t0 = last;
     raf = requestAnimationFrame(frame);
   }
@@ -1035,12 +1215,12 @@ void main(){
     open = false; cancelAnimationFrame(raf);
     el.screen.classList.remove("open"); el.screen.setAttribute("inert", ""); el.screen.setAttribute("aria-hidden", "true");
     document.body.classList.remove("map-open");
-    keys.clear(); pointers.clear(); dragging = false;
+    keys.clear(); pointers.clear(); dragging = false; burn = null; el.burn.classList.remove("on"); el.toast.classList.remove("on"); el.screen.classList.remove("burning");
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
   window.RasyancutMap = {
     prepare, show, hide, isOpen: () => open,
-    _debug: { SKIP, getVq: () => vq, cam, gates: () => gates, specials: () => specials, WORLD, MAX_SPEED, SANCT_R, flyTo },
+    _debug: { SKIP, getVq: () => vq, cam, gates: () => gates, specials: () => specials, WORLD, R_MAP, MAX_SPEED, SANCT_R, flyTo, getBurn: () => burn, startBurn: () => startBurn(performance.now()) },
   };
 })();

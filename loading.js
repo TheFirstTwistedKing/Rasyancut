@@ -9,14 +9,14 @@
   "use strict";
 
   const IMAGES = [
-    "loading-1.jpg",
-    "loading-2.jpg",
-    "loading-3.jpg",
-    "loading-4.jpg",
-    "loading-5.jpg",
-    "loading-6.jpg",
-    "loading-7.jpg",
-    "loading-8.jpg",
+    "loading-1.webp",
+    "loading-2.webp",
+    "loading-3.webp",
+    "loading-4.webp",
+    "loading-5.webp",
+    "loading-6.webp",
+    "loading-7.webp",
+    "loading-8.webp",
   ];
   const DIR = "assets/loading/";
   const FADE_IN = 800, FADE_OUT = 900;
