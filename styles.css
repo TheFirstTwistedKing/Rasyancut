@@ -670,6 +670,8 @@ body.map-open .stage, body.map-open .panel { visibility: hidden; }
 }
 
 /* ───────── 맵 경계: 불타는 연출 / 가속 / 원형 미니맵 ───────── */
+.fire-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
+.fire-canvas.on { display: block; }
 .burn-canvas {
   position: absolute; inset: 0; width: 100%; height: 100%;
   pointer-events: none; z-index: 6;
