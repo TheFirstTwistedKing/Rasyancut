@@ -135,6 +135,7 @@
       <g id="fruit-group" class="fruit-group">
         <g id="stem" class="stem"></g>
         <g id="fruit" class="fruit" role="button" tabindex="0" aria-label="세피로트의 열매">
+         <g class="ripples" aria-hidden="true"></g>
          <g class="bounce">
           <!-- 빛 번짐: 고리보다 훨씬 크다 -->
           <g class="bloom" aria-hidden="true">
@@ -156,6 +157,18 @@
           </g>
           <g class="orbit" aria-hidden="true">
             <circle r="34" fill="none" stroke="#f4ff86" stroke-width="1" stroke-dasharray="1.5 7" vector-effect="non-scaling-stroke" opacity=".8"/>
+          </g>
+          <!-- 점 4개를 이어 만든 4꼭짓점 별 -->
+          <g class="star" aria-hidden="true">
+            <path d="M0 -50Q8.5 -8.5 50 0Q8.5 8.5 0 50Q-8.5 8.5 -50 0Q-8.5 -8.5 0 -50Z" fill="none" stroke="#eeff6b" stroke-width="3.2" opacity=".35" filter="url(#glow-soft)" stroke-linejoin="round"/>
+            <path d="M0 -50Q8.5 -8.5 50 0Q8.5 8.5 0 50Q-8.5 8.5 -50 0Q-8.5 -8.5 0 -50Z" fill="none" stroke="#f4ff86" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M0 -50Q8.5 -8.5 50 0Q8.5 8.5 0 50Q-8.5 8.5 -50 0Q-8.5 -8.5 0 -50Z" fill="none" stroke="#ffffff" stroke-width=".6" stroke-linejoin="round"/>
+            <g class="star-dots">
+              <circle cx="0" cy="-50" r="5" fill="url(#core)"/><circle cx="0" cy="-50" r="2.2" fill="#fff"/>
+              <circle cx="50" cy="0" r="5" fill="url(#core)"/><circle cx="50" cy="0" r="2.2" fill="#fff"/>
+              <circle cx="0" cy="50" r="5" fill="url(#core)"/><circle cx="0" cy="50" r="2.2" fill="#fff"/>
+              <circle cx="-50" cy="0" r="5" fill="url(#core)"/><circle cx="-50" cy="0" r="2.2" fill="#fff"/>
+            </g>
           </g>
           <g class="dust" aria-hidden="true"></g>
          </g>
