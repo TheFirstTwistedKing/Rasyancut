@@ -80,8 +80,8 @@
 
   const FRUIT_SCALE = 0.8;                       // 나무에 달린 열매의 크기 (확대했을 때의 크기는 그대로)
   const STAR = "M0 -50Q8.5 -8.5 50 0Q8.5 8.5 0 50Q-8.5 8.5 -50 0Q-8.5 -8.5 0 -50Z";
-  const unitHTML = ({ id, pal: p, phase, pos }) => `
-    <g class="fruit-unit" data-id="${id}" style="--f1:${p.c1};--f2:${p.c2};--f3:${p.c3};--ph:${phase}s">
+  const unitHTML = ({ id, pal: p, phase, pos, anchor, swing, amp }) => `
+    <g class="fruit-unit" data-id="${id}" style="--f1:${p.c1};--f2:${p.c2};--f3:${p.c3};--ph:${phase}s;--ax:${anchor[0]}px;--ay:${anchor[1]}px;--sw:${swing}s;--sa:${amp}deg">
       <g class="stem"></g>
       <g class="fruit" role="button" tabindex="0" aria-label="세피로트의 열매 ${id}" transform="translate(${pos.x} ${pos.y}) scale(${FRUIT_SCALE})">
         <g class="ripples" aria-hidden="true"></g>
@@ -119,7 +119,9 @@
 
   const fruitList = FRUIT_DEFS.map((f) => {
     const S = { x: f.anchor[0], y: f.anchor[1] };
-    return { ...f, S, pos: { x: S.x + 4, y: S.y + 62 } };
+    // 열매마다 흔들리는 박자·폭이 조금씩 다르다 (모두 같이 흔들리면 인공적으로 보인다)
+    const k = Number(f.id) - 1;
+    return { ...f, S, pos: { x: S.x + 4, y: S.y + 62 }, swing: (5.4 + (k * 0.83) % 2.3).toFixed(2), amp: (2.4 + (k * 0.37) % 1.2).toFixed(2) };
   });
   $("tree").querySelector("defs").insertAdjacentHTML("beforeend", fruitList.map(gradHTML).join(""));
   $("fruit-group").insertAdjacentHTML("beforeend", fruitList.map(unitHTML).join(""));
@@ -164,9 +166,23 @@
   const svg = $("tree");
   const baseVB = () => (window.innerWidth / window.innerHeight < 0.8
     ? [-24, -30, 724, 870] : [10, -30, 660, 870]);
+  const svgFruits = $("tree-fruits");
+  // 열매 레이어는 나무와 항상 같은 시야를 쓴다 (카메라 이동 중에도 viewBox 가 바뀔 때마다 따라간다)
+  new MutationObserver(() => svgFruits.setAttribute("viewBox", svg.getAttribute("viewBox")))
+    .observe(svg, { attributes: true, attributeFilter: ["viewBox"] });
+  /** 바람에 기우는 중심(나무 뿌리)이 화면의 어디인지 계산해 두 레이어에 알려 준다 */
+  const setSwayOrigin = () => {
+    const box = $("tree-box"), W = box.clientWidth, H = box.clientHeight;      // 기울기가 적용되지 않은 레이아웃 크기
+    const [vx, vy, vw, vh] = baseVB();
+    if (!W || !H) return;
+    const s = Math.min(W / vw, H / vh);
+    const o = { "--ox": ((W - vw * s) / 2 + (298 - vx) * s).toFixed(1) + "px", "--oy": ((H - vh * s) / 2 + (806 - vy) * s).toFixed(1) + "px" };
+    [svg, svgFruits].forEach((el) => Object.entries(o).forEach(([k, v]) => el.style.setProperty(k, v)));
+  };
   const fitView = () => {
     if (camMode !== "idle") return;
     svg.setAttribute("viewBox", baseVB().join(" "));
+    setSwayOrigin();
   };
   let camMode = "idle";          // idle | zooming | open
   fitView();
@@ -294,10 +310,16 @@
   // 브라우저는 사용자의 첫 클릭/키 입력 전에는 소리를 낼 수 없다.
   // 그래서 첫 입력 때 서서히 커지며 시작하고, 오른쪽 위 버튼으로 끄고 켤 수 있다. (선택은 기억됨)
   const Bgm = (() => {
-    const SRC = "assets/audio/bgm.mp3";
-    const VOL = 0.2;                           // 밑바탕에 깔리는 정도 (효과음 0.8 대비 약 -12dB). 더 크게/작게는 이 값만 바꾼다
+    // 곡마다 밑바탕에 깔리는 정도(vol)를 따로 둔다 (효과음 0.8 대비 약 -12dB). 더 크게/작게는 이 값만 바꾼다
+    //   vanguard 는 원곡이 main 보다 약 2dB 작아서 그만큼 올려 비슷하게 들리게 맞췄다
+    const TRACKS = {
+      main:     { src: "assets/audio/bgm.mp3", vol: 0.2 },
+      vanguard: { src: "assets/audio/bgm-vanguard.mp3", vol: 0.26 },      // 라시안컷 : 뱅가드 입장 후
+    };
+    let trackName = "main";
+    const curVol = () => TRACKS[trackName].vol;
     const KEY = "rasyancut.bgm";
-    const el = new Audio(SRC);
+    const el = new Audio(TRACKS.main.src);
     el.loop = true;
     el.preload = "auto";
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -345,7 +367,7 @@
         await el.play();
         playing = true;
         render();
-        ramp(VOL, 5500);                      // 아주 천천히 스며들듯 시작
+        ramp(curVol(), 5500);                 // 아주 천천히 스며들듯 시작
       } catch (_) { /* 사용자 입력이 아직 없으면 실패 → 다음 입력 때 다시 시도 */ }
       finally { starting = false; }
     };
@@ -376,11 +398,25 @@
     /** 효과음이 울릴 때 잠깐 낮췄다가 되돌린다 */
     const duck = () => {
       if (!playing || !want) return;
-      ramp(VOL * 0.5, 160).then(() => setTimeout(() => { if (want) ramp(VOL, 2200); }, 450));
+      ramp(curVol() * 0.5, 160).then(() => setTimeout(() => { if (want) ramp(curVol(), 2200); }, 450));
+    };
+
+    /** 곡 바꾸기: 지금 곡이 서서히 사라지고 새 곡이 스며든다. 재생 중이 아니면(꺼 둔 경우 등) 다음 재생 때 그 곡으로 시작 */
+    let switching = 0;
+    const setTrack = async (name, outMs = 1400, inMs = 4000) => {
+      if (!TRACKS[name] || name === trackName) return;
+      trackName = name;
+      const id = ++switching;
+      if (!playing || !want) { el.src = TRACKS[name].src; return; }
+      await ramp(0, outMs);
+      if (id !== switching) return;
+      el.src = TRACKS[name].src;
+      try { await el.play(); } catch (_) { /* 재생이 막히면 다음 입력 때 */ }
+      if (id === switching && want) ramp(curVol(), inMs);
     };
 
     render();                                  // 시작은 첫 사용자 입력에서 (그 전에는 브라우저가 막는다)
-    return { start, stop, toggle, duck };
+    return { start, stop, toggle, duck, setTrack, track: () => trackName };
   })();
   window.RasyancutBgm = Bgm;
 
@@ -646,6 +682,7 @@
     if (FRUITS[CURRENT].locked) return;
     if (target) { Transition.play(() => { window.location.href = target; }); return; }   // 주소가 정해진 열매는 그대로 이동
     if (!MapView || !Loading || Loading.isBusy()) return;
+    Bgm.setTrack("vanguard");                     // 입장하면 라시안컷 : 뱅가드의 음악으로
     await Loading.run(async () => {
       await MapView.prepare();
       return { ready: () => MapView.show() };
@@ -656,6 +693,7 @@
   // 맵에서 나오기: 기존 전환 연출(슬랫 + 아이콘) 후 열매 설명창으로 복귀
   const mapExit = document.getElementById("map-exit");
   if (mapExit) mapExit.addEventListener("click", () => {
+    Bgm.setTrack("main");                         // 나오면 원래 음악으로
     Transition.play(() => { MapView.hide(); });
     setTimeout(() => el.enter.focus({ preventScroll: true }), 1800);
   });
