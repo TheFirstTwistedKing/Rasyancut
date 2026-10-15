@@ -35,12 +35,13 @@
   }
 
 
-  async function run(task) {
+  /** opts.file: 이 이미지만 보여 준다(없으면 무작위) */
+  async function run(task, opts = {}) {
     if (busy) return;
     busy = true;
     const root = document.getElementById("loading");
     const img = document.getElementById("loading-img");
-    const item = pick();
+    const item = (opts.file && IMAGES.find((i) => i.file === opts.file)) || pick();
     img.src = DIR + item.file;
     try { await img.decode(); } catch (_) { /* 디코드 실패해도 진행 */ }
     // 애니메이션(확대) 재시작

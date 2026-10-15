@@ -429,10 +429,13 @@
       title: "라시안컷 : 뱅가드",
       desc: "라시안컷 : 뱅가드. 솔스티스가 관리하고 있는 성소다.",
       target: null,
+      loading: "loading-4.webp",                 // 비슷한 색(연노랑)의 금빛 별
     },
   };
+  // 열매 색과 비슷한 로딩 이미지 (입장할 때 그 이미지만 뜬다)
+  const LOADING_OF = { "02": "loading-1.webp", "03": "loading-2.webp", "04": "loading-3.webp", "05": "loading-4.webp", "06": "loading-5.webp", "07": "loading-6.webp" };
   fruitList.slice(1).forEach((f) => {
-    FRUITS[f.id] = { kicker: `FRUIT · ${f.id}`, title: `열매 ${f.id}`, desc: "아직 이야기가 정해지지 않은 열매입니다.", target: null, locked: true };
+    FRUITS[f.id] = { kicker: `FRUIT · ${f.id}`, title: `열매 ${f.id}`, desc: "아직 이야기가 정해지지 않은 열매입니다.", target: null, loading: LOADING_OF[f.id] };   // 입장할 곳은 아직 없어서 임시로 같은 맵으로 들어간다
   });
   let CURRENT = "01";
   let active = fruitList[0];
@@ -686,7 +689,7 @@
     await Loading.run(async () => {
       await MapView.prepare();
       return { ready: () => MapView.show() };
-    });
+    }, { file: FRUITS[CURRENT].loading });
     const ex = document.getElementById("map-exit");
     if (ex) ex.focus({ preventScroll: true });
   });
