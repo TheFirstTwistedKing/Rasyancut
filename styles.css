@@ -641,6 +641,21 @@ body.map-open .stage, body.map-open .panel { visibility: hidden; }
   color: var(--neon);
   animation: spin 1s linear infinite;
 }
+/* "이동 중..." — 얇은 세리프체, 로딩 표시 왼쪽 */
+.loading-text {
+  position: absolute;
+  right: calc(max(28px, calc(env(safe-area-inset-right) + 22px)) + 46px + 16px);
+  bottom: calc(max(28px, calc(env(safe-area-inset-bottom) + 22px)) + 23px);
+  transform: translateY(50%);
+  margin: 0;
+  font: 200 clamp(15px, 2.4vw, 20px)/1 "Noto Serif KR", "Nanum Myeongjo", "Batang", serif;
+  letter-spacing: .22em;
+  color: var(--neon-soft);
+  text-shadow: 0 0 10px rgba(238, 255, 107, .35);
+  white-space: nowrap;
+  animation: loading-text-pulse 1.8s ease-in-out infinite;
+}
+@keyframes loading-text-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 .spinner .track { stroke: currentColor; opacity: .22; }
 .spinner .arc { stroke: currentColor; }
 @media (min-width: 900px) and (orientation: landscape) {
