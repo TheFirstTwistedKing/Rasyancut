@@ -1286,7 +1286,11 @@ void main(){
       const loc = gl.getAttribLocation(prog, "aPos"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
       const U = {}; ["uRes", "uCenter", "uT", "uTravel", "uEnter", "uGlitch", "uOff", "uFlight"].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
       portalGL = { gl, U };
-    } catch (e) { portalGL = null; console.warn("포탈 연출(WebGL) 사용 불가 → 단순한 연출로 대체:", e.message); }
+    } catch (e) {
+      portalGL = null; console.warn("포탈 연출(WebGL) 사용 불가 → 단순한 연출로 대체:", e.message);
+      // WebGL 컨텍스트가 이미 붙은 캔버스는 2D 로 못 쓴다 → 같은 자리에 새 캔버스를 둔다
+      const fresh = c.cloneNode(false); c.replaceWith(fresh); el.portal = fresh;
+    }
   }
 
   /** 쌍둥이의 틈 소용돌이 중심의 월드 좌표 (틈이 약간 기울어져 있다) */
@@ -1378,6 +1382,7 @@ void main(){
   }
   function endPortal() {
     portal = null; el.portal.classList.remove("on"); el.screen.classList.remove("portaling"); el.toast.classList.remove("on");
+    const lk = document.getElementById("portal-link"); if (lk) lk.classList.remove("on");
   }
   const smooth01 = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
@@ -1431,7 +1436,13 @@ void main(){
     }
     if (tp >= T4 && !portal.done && fixed == null) {
       portal.done = true;
-      try { window.location.href = PORTAL_URL; } catch (_) { endPortal(); }
+      try { window.location.href = PORTAL_URL; } catch (_) { /* 아래 링크로 대신한다 */ }
+      // 브라우저가 이동을 막았거나 늦어지면, 검은 화면에서 직접 누를 수 있는 링크를 보여 준다
+      setTimeout(() => {
+        if (!portal || !open) return;
+        const a = document.getElementById("portal-link");
+        if (a) { a.href = PORTAL_URL; a.classList.add("on"); }
+      }, 3000);
     }
   }
   // 뒤로 가기로 돌아왔을 때(캐시된 화면이 까맣게 남아 있을 수 있음) 깨끗하게 다시 불러온다
