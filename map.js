@@ -2,7 +2,7 @@
  *
  *  - 세계 크기 16000 × 16000. 최고 속도로 끝에서 끝까지 약 8초 (CROSS_SECONDS)
  *  - 중앙: 성역의 경계 / 곳곳: 찢어진 차원의 틈 관문 260개(일반 258 + 특별 2)
- *  - 특별 관문(페이스라이, 오비투아리바): 연노랑·검정 소용돌이 + 사실적인 빛, 일반 관문보다 큼
+ *  - 특별 관문(페이스리아의 차원의 틈, 오비투아리바의 차원의 틈): 연노랑·검정 소용돌이 + 사실적인 빛, 일반 관문보다 큼
  *  - 조작: 드래그(관성) · 휠/핀치 확대 · 방향키/WASD · 터치 조이스틱 · 미니맵 클릭
  *
  *  window.RasyancutMap = { prepare(onProgress), show(), hide(), isOpen() }
@@ -19,8 +19,8 @@
   const Z_MIN = 0.1, Z_MAX = 1.5;
   const NORMAL_GATES = 258;                          // + 특별 2 = 260
   const SPECIAL = [
-    { name: "페이스라이",   x: 11900, y: 4100 },
-    { name: "오비투아리바", x: 4000,  y: 11800 },
+    { name: "페이스리아의 차원의 틈",   x: 11900, y: 4100 },
+    { name: "오비투아리바의 차원의 틈", x: 4000,  y: 11800 },
   ];
   const NEON = "#eeff6b", NEON_SOFT = "#f4ff86", NEON_PALE = "#fbffc8";
 
@@ -334,7 +334,7 @@ void main(){
     initVortexGL();
     buildMiniStatic(); await step();
     if (document.fonts && document.fonts.load) {
-      try { await Promise.race([document.fonts.load('700 20px "Noto Serif KR"', "페이스라이"), new Promise((res) => setTimeout(res, 1500))]); } catch (_) { /* 기본 글꼴 */ }
+      try { await Promise.race([document.fonts.load('700 20px "Noto Serif KR"', "페이스리아의 차원의 틈"), new Promise((res) => setTimeout(res, 1500))]); } catch (_) { /* 기본 글꼴 */ }
     }
     await step();
     prepared = true;
