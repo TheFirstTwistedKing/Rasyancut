@@ -526,14 +526,32 @@
   });
   el.close.addEventListener("click", closeFruit);
   el.back.addEventListener("click", closeFruit);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeFruit(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (document.body.classList.contains("map-open")) { const ex = document.getElementById("map-exit"); if (ex) ex.click(); return; }   // 맵에서는 Esc 로 나가기
+    closeFruit();
+  });
   // 창 바깥(빈 곳)을 눌러도 닫힌다
   stage.addEventListener("click", (e) => {
     if (camMode === "open" && !panel.contains(e.target) && !fruit.contains(e.target)) closeFruit();
   });
-  // 입장: 전환 연출(아이콘 포함) 후 이동
-  el.enter.addEventListener("click", () => {
+  // 입장: 로딩 화면(무작위 이미지, 오른쪽 아래 로딩 표시)이 페이드인 → 라시안컷 맵 준비 → 페이드아웃
+  const MapView = window.RasyancutMap, Loading = window.RasyancutLoading;
+  el.enter.addEventListener("click", async () => {
     const target = FRUITS[CURRENT].target;
-    Transition.play(() => { if (target) window.location.href = target; });
+    if (target) { Transition.play(() => { window.location.href = target; }); return; }   // 주소가 정해진 열매는 그대로 이동
+    if (!MapView || !Loading || Loading.isBusy()) return;
+    await Loading.run(async () => {
+      await MapView.prepare();
+      return { ready: () => MapView.show() };
+    });
+    const ex = document.getElementById("map-exit");
+    if (ex) ex.focus({ preventScroll: true });
+  });
+  // 맵에서 나오기: 기존 전환 연출(슬랫 + 아이콘) 후 열매 설명창으로 복귀
+  const mapExit = document.getElementById("map-exit");
+  if (mapExit) mapExit.addEventListener("click", () => {
+    Transition.play(() => { MapView.hide(); });
+    setTimeout(() => el.enter.focus({ preventScroll: true }), 1800);
   });
 })();
