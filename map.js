@@ -185,7 +185,11 @@
   // 터널 좌표(깊이 = 1/r)로 중심을 향해 빨려 드는 흐름을 만들고, 도메인 워핑 fbm 난류 + 가는 빛 가닥 + 뜨거운 중심으로 실제 가스 소용돌이처럼 그린다.
   const VORTEX_VS = "attribute vec2 aPos; varying vec2 vUv; void main(){ vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }";
   const VORTEX_FS = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
+#else
+precision mediump float;
+#endif
 varying vec2 vUv;
 uniform float uTime, uDir, uSeed;
 float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -195,48 +199,134 @@ float vnoise(vec2 p, float per){
   float c = hash(vec2(mod(i.x, per), i.y + 1.0)), d = hash(vec2(mod(i.x + 1.0, per), i.y + 1.0));
   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
-float fbm(vec2 p, float per){
+float fbm5(vec2 p, float per){
   float v = 0.0, a = 0.5;
   for (int i = 0; i < 5; i++){ v += a * vnoise(p, per); p = p * 2.0 + 3.7; per *= 2.0; a *= 0.5; }
+  return v;
+}
+float fbm4(vec2 p, float per){
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++){ v += a * vnoise(p, per); p = p * 2.0 + 3.7; per *= 2.0; a *= 0.5; }
   return v;
 }
 void main(){
   vec2 p = vUv * 2.0 - 1.0;
   float r = length(p), ang = atan(p.y, p.x);
   float u = ang / 6.2831853 + 0.5;
-  float depth = 0.5 / (r + 0.07);                       // 터널 깊이: 중심에 가까울수록 깊다
-  float flow = uTime * 0.5 * uDir;
-  float twist = uTime * 0.16 * uDir + depth * 0.26;      // 깊을수록 더 감기는 나선
-  float uu = u + twist;
   const float P = 6.0;
-  vec2 q = vec2(uu * P, depth * 1.25 - flow);
-  float w1 = fbm(q + vec2(uSeed, 0.0), P);
-  float w2 = fbm(vec2(q.x + w1 * 2.4, q.y + w1 * 1.6) + vec2(5.2, 1.3 + uSeed), P);
-  // 거대한 나선 팔(세 갈래) 위에 난류를 얹는다
-  float arms = 0.5 + 0.5 * sin((uu * 3.0 + depth * 0.9 + w2 * 1.7) * 6.2831853);
-  float dens = smoothstep(0.30, 0.86, arms * 0.6 + w2 * 0.64);
-  // 가는 빛 가닥(능선 노이즈)
-  float rid = 1.0 - abs(2.0 * fbm(vec2(q.x * 2.0 + w2 * 3.0, q.y * 1.6 - flow * 0.4), P * 2.0) - 1.0);
-  rid = pow(rid, 5.0);
+
+  // ── 가까운 층: 중심으로 빨려 드는 터널(깊이 = 1/r) + 깊을수록 더 감기는 나선
+  float dA = 0.5 / (r + 0.07);
+  float flowA = uTime * 0.5 * uDir;
+  float uA = u + uTime * 0.16 * uDir + dA * 0.26;
+  vec2 qA = vec2(uA * P, dA * 1.25 - flowA);
+  float a1 = fbm4(qA + vec2(uSeed, 0.0), P);
+  float a2 = fbm5(vec2(qA.x + a1 * 2.4, qA.y + a1 * 1.6) + vec2(5.2, 1.3 + uSeed), P);
+  float armsA = 0.5 + 0.5 * sin((uA * 3.0 + dA * 0.9 + a2 * 1.7) * 6.2831853);
+  float densA = smoothstep(0.32, 0.8, armsA * 0.6 + a2 * 0.64);
+  float fine = fbm4(vec2(qA.x * 4.0 + a2 * 3.0, qA.y * 3.2 - flowA * 0.6), P * 4.0);   // 가스의 잔결
+  densA *= 0.7 + 0.6 * fine;
+  float rid = 1.0 - abs(2.0 * fbm4(vec2(qA.x * 2.0 + a2 * 3.0, qA.y * 1.6 - flowA * 0.4), P * 2.0) - 1.0);
+  rid = pow(rid, 5.0);                                                                  // 가는 빛 가닥
+
+  // ── 먼 층: 느리게 반대로 감기는 연기 (시차로 깊이를 만든다)
+  float dB = dA * 0.6 + 3.1;
+  float uB = u - uTime * 0.09 * uDir - dB * 0.2;
+  vec2 qB = vec2(uB * P, dB * 1.1 - uTime * 0.26 * uDir);
+  float b1 = fbm4(qB + vec2(uSeed * 1.7, 3.3), P);
+  float densB = smoothstep(0.4, 0.88, b1 * 1.15);
+
   float glow = 1.0 / (1.0 + r * r * 16.0);
-  // 한쪽이 더 밝은(도플러) 비대칭 + 안쪽일수록 밝게
-  float side = 0.82 + 0.3 * sin(ang * 1.0 + uTime * 0.3 * uDir + uSeed);
-  float inten = (dens * (0.42 + 1.15 * rid) + dens * dens * 0.55) * (0.3 + 1.5 * glow) * side;
-  inten *= smoothstep(1.22, 0.3, r);                      // 바깥은 어둠으로
-  inten = pow(max(inten, 0.0), 1.18);                    // 대비: 어두운 결은 진짜 검정으로
+  float side = 0.82 + 0.3 * sin(ang + uTime * 0.3 * uDir + uSeed);                      // 한쪽이 더 밝은 비대칭
+  float inten = (densA * (0.42 + 1.15 * rid) + densA * densA * 0.55) * (0.3 + 1.5 * glow) * side;
+  inten += densB * (1.0 - densA) * 0.3 * (0.35 + 1.3 * glow);
+  inten *= smoothstep(1.22, 0.3, r);
+  inten = pow(max(inten, 0.0), 1.18);
+
   vec3 col = vec3(0.0);
   col = mix(col, vec3(0.55, 0.46, 0.04), smoothstep(0.06, 0.4, inten));
   col = mix(col, vec3(0.95, 1.0, 0.42), smoothstep(0.28, 0.8, inten));
   col = mix(col, vec3(1.0, 0.99, 0.86), smoothstep(0.85, 1.5, inten));
-  col += vec3(1.0, 0.97, 0.78) * exp(-r * 8.0) * 1.0;     // 뜨거운 중심부
-  col += vec3(1.0) * exp(-r * 30.0) * 2.0;                // 한가운데 백열
+
+  // ── 안으로 빨려 드는 불씨 (길게 늘어난 점)
+  vec2 ec = vec2(uA * P * 3.0, dA * 2.75 - flowA * 2.2);
+  vec2 ci = floor(ec), cf = fract(ec) - 0.5;
+  ci.x = mod(ci.x, P * 3.0);
+  float eh = hash(ci + uSeed);
+  vec2 eo = vec2(hash(ci + 7.1), hash(ci + 3.3)) - 0.5;
+  float ember = step(0.9, eh) * smoothstep(0.14, 0.0, length((cf - eo * 0.6) * vec2(1.0, 0.42)));
+  col += vec3(1.0, 0.97, 0.7) * ember * (0.5 + 1.6 * glow) * smoothstep(1.1, 0.2, r);
+
+  col += vec3(1.0, 0.97, 0.78) * exp(-r * 8.0);            // 뜨거운 중심부
+  col += vec3(1.0) * exp(-r * 30.0) * 2.0;                  // 한가운데 백열
+  col = 1.0 - exp(-col * 1.45);                             // 톤 매핑: 하이라이트가 부드럽게 말린다
+  col += (hash(gl_FragCoord.xy) - 0.5) / 200.0;             // 디더링: 어두운 그라데이션의 띠 현상 방지
   gl_FragColor = vec4(col, 1.0);
 }`;
+
+  // ───────────────────────── 대체 소용돌이(WebGL 없음): 같은 수식을 JS 로 한 번 구워 두고 회전·겹침으로 움직임을 만든다 ─────────────────────────
+  const jfract = (v) => v - Math.floor(v);
+  const jhash = (x, y) => { let px = jfract(x * 123.34), py = jfract(y * 456.21); const d = px * (px + 45.32) + py * (py + 45.32); px += d; py += d; return jfract(px * py); };
+  const jmod = (a, b) => ((a % b) + b) % b;
+  const jvnoise = (x, y, per) => {
+    const ix = Math.floor(x), iy = Math.floor(y); let fx = x - ix, fy = y - iy;
+    fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+    const a = jhash(jmod(ix, per), iy), b = jhash(jmod(ix + 1, per), iy), c = jhash(jmod(ix, per), iy + 1), d = jhash(jmod(ix + 1, per), iy + 1);
+    return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
+  };
+  const jfbm = (x, y, per, oct) => { let v = 0, a = 0.5; for (let i = 0; i < oct; i++) { v += a * jvnoise(x, y, per); x = x * 2 + 3.7; y = y * 2 + 3.7; per *= 2; a *= 0.5; } return v; };
+  const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const mix3 = (c0, c1, t) => [c0[0] + (c1[0] - c0[0]) * t, c0[1] + (c1[1] - c0[1]) * t, c0[2] + (c1[2] - c0[2]) * t];
+
+  /** 셰이더와 같은 수식(t=0)으로 S×S 소용돌이 질감을 굽는다. 행 단위로 양보하며 진행 */
+  async function bakeSwirl(S, seed) {
+    const c = mk(S, S), g = c.getContext("2d"), img = g.createImageData(S, S), px = img.data;
+    const P = 6;
+    for (let j = 0; j < S; j++) {
+      for (let i = 0; i < S; i++) {
+        const x = i / (S - 1) * 2 - 1, y = (S - 1 - j) / (S - 1) * 2 - 1;
+        const r = Math.hypot(x, y), ang = Math.atan2(y, x), u = ang / 6.2831853 + 0.5;
+        const dA = 0.5 / (r + 0.07), uA = u + dA * 0.26;
+        const qx = uA * P, qy = dA * 1.25;
+        const a1 = jfbm(qx + seed, qy, P, 4);
+        const a2 = jfbm(qx + a1 * 2.4 + 5.2, qy + a1 * 1.6 + 1.3 + seed, P, 5);
+        const arms = 0.5 + 0.5 * Math.sin((uA * 3 + dA * 0.9 + a2 * 1.7) * 6.2831853);
+        let dens = sstep(0.32, 0.8, arms * 0.6 + a2 * 0.64);
+        const fine = jfbm(qx * 4 + a2 * 3, qy * 3.2, P * 4, 4);
+        dens *= 0.7 + 0.6 * fine;
+        let rid = 1 - Math.abs(2 * jfbm(qx * 2 + a2 * 3, qy * 1.6, P * 2, 4) - 1); rid = Math.pow(rid, 5);
+        const dB = dA * 0.6 + 3.1, uB = u - dB * 0.2;
+        const b1 = jfbm(uB * P + seed * 1.7, dB * 1.1 + 3.3, P, 4);
+        const densB = sstep(0.4, 0.88, b1 * 1.15);
+        const glow = 1 / (1 + r * r * 16), side = 0.82 + 0.3 * Math.sin(ang + seed);
+        let inten = (dens * (0.42 + 1.15 * rid) + dens * dens * 0.55) * (0.3 + 1.5 * glow) * side;
+        inten += densB * (1 - dens) * 0.3 * (0.35 + 1.3 * glow);
+        inten *= sstep(1.22, 0.3, r);
+        inten = Math.pow(Math.max(inten, 0), 1.18);
+        let col = [0, 0, 0];
+        col = mix3(col, [0.55, 0.46, 0.04], sstep(0.06, 0.4, inten));
+        col = mix3(col, [0.95, 1.0, 0.42], sstep(0.28, 0.8, inten));
+        col = mix3(col, [1.0, 0.99, 0.86], sstep(0.85, 1.5, inten));
+        const core = Math.exp(-r * 8), eye = Math.exp(-r * 30) * 2;
+        const o = (j * S + i) * 4;
+        px[o] = 255 * (1 - Math.exp(-(col[0] + core + eye) * 1.45));
+        px[o + 1] = 255 * (1 - Math.exp(-(col[1] + core * 0.97 + eye) * 1.45));
+        px[o + 2] = 255 * (1 - Math.exp(-(col[2] + core * 0.78 + eye) * 1.45));
+        px[o + 3] = 255;
+      }
+      if (j % 12 === 11) await tick();
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  const bakes = [], bakeBusy = [];
+
   let vgl = null;
+  const VORTEX_MAX = window.matchMedia && window.matchMedia("(pointer: coarse)").matches ? 768 : 1024;   // 화면 픽셀에 맞춰 선명하게(상한)
   let vq = 1, emaDt = 16, vortexDrawn = false;     // 소용돌이 해상도 배율(느린 기기에서 자동으로 낮춤)
   function initVortexGL() {
     try {
-      const cv = document.createElement("canvas"); cv.width = cv.height = 512;
+      const cv = document.createElement("canvas"); cv.width = cv.height = 1024;
       const gl = cv.getContext("webgl", { alpha: false, antialias: false, preserveDrawingBuffer: true, powerPreference: "high-performance" });
       if (!gl) return;
       const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
@@ -332,6 +422,7 @@ void main(){
     bloomTex.core = makeBloom("255,255,245", "255,252,200");
     raysTex = [makeRays(1), makeRays(2)];
     initVortexGL();
+    if (!vgl) { for (let i = 0; i < 2; i++) bakes[i] = await bakeSwirl(384, i * 7.3 + 1.7); }
     buildMiniStatic(); await step();
     if (document.fonts && document.fonts.load) {
       try { await Promise.race([document.fonts.load('700 20px "Noto Serif KR"', "페이스리아의 차원의 틈"), new Promise((res) => setTimeout(res, 1500))]); } catch (_) { /* 기본 글꼴 */ }
@@ -666,33 +757,22 @@ void main(){
     if (vgl) {
       // 틈 전체(바운딩 박스)를 덮는 정사각형에 셰이더 소용돌이를 그린다
       const half = sp.rad * k * 1.08;
-      const R = clamp(Math.round(half * 2 * z * dpr * vq), 64, 448);
+      const R = clamp(Math.round(half * 2 * z * dpr * vq), 64, VORTEX_MAX);
       vortexDrawn = true;
       renderVortex(R, t, s.idx ? -1 : 1, s.idx * 7.3 + 1.7);
-      ctx.drawImage(vgl.cv, 0, 512 - R, R, R, -half, -half, half * 2, half * 2);
+      ctx.drawImage(vgl.cv, 0, vgl.cv.height - R, R, R, -half, -half, half * 2, half * 2);
     } else {
-    const rot = t * 0.7 * (s.idx ? -1 : 1);
-    const arms = 6;
-    const ag = ctx.createRadialGradient(0, 0, 0, 0, 0, vr);
-    ag.addColorStop(0, "#ffffff"); ag.addColorStop(0.1, "#fffbd0"); ag.addColorStop(0.3, "#f4ff86"); ag.addColorStop(0.65, "#d6c93f"); ag.addColorStop(1, "rgba(120,100,10,0.85)");
-    ctx.fillStyle = ag;
-    for (let a = 0; a < arms; a++) {
-      const off = a / arms * Math.PI * 2;
-      ctx.beginPath();
-      const steps = 34;
-      for (let i = 0; i <= steps; i++) {
-        const q = i / steps, rr = vr * (0.04 + 0.96 * q), th = rot + off + 3.4 * Math.log(0.12 + q) * -1;
-        const hw = (0.55 - 0.3 * q) * (Math.PI / arms);
-        const x = Math.cos(th + hw) * rr, y = Math.sin(th + hw) * rr;
-        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      // WebGL 없음/손실: 구워 둔 질감을 서로 다른 속도로 돌려 겹쳐 흐름을 흉내 낸다
+      const half = sp.rad * k * 1.08, dirv = s.idx ? -1 : 1;
+      if (!bakes[s.idx] && !bakeBusy[s.idx]) { bakeBusy[s.idx] = true; bakeSwirl(256, s.idx * 7.3 + 1.7).then((c) => { bakes[s.idx] = c; }); }
+      const bk = bakes[s.idx];
+      if (bk) {
+        ctx.save(); ctx.rotate(t * 0.32 * dirv); ctx.drawImage(bk, -half, -half, half * 2, half * 2); ctx.restore();
+        ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.42;
+        const h2 = half * 1.18;
+        ctx.save(); ctx.rotate(-t * 0.21 * dirv + 1.3); ctx.drawImage(bk, -h2, -h2, h2 * 2, h2 * 2); ctx.restore();
+        ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
       }
-      for (let i = steps; i >= 0; i--) {
-        const q = i / steps, rr = vr * (0.04 + 0.96 * q), th = rot + off + 3.4 * Math.log(0.12 + q) * -1;
-        const hw = (0.55 - 0.3 * q) * (Math.PI / arms);
-        ctx.lineTo(Math.cos(th - hw) * rr, Math.sin(th - hw) * rr);
-      }
-      ctx.closePath(); ctx.fill();
-    }
     }
     // 중심: 하얀 핵
     ctx.globalCompositeOperation = "lighter";
@@ -815,8 +895,8 @@ void main(){
     // 소용돌이가 보이는 동안 프레임이 느려지면 소용돌이 해상도를 낮추고, 여유가 생기면 천천히 되돌린다
     emaDt += (dt * 1000 - emaDt) * 0.08;
     if (vortexDrawn) {
-      if (emaDt > 36 && vq > 0.55) vq = Math.max(0.55, vq * 0.96);
-      else if (emaDt < 21 && vq < 1) vq = Math.min(1, vq * 1.015);
+      if (emaDt > 48 && vq > 0.75) vq = Math.max(0.75, vq * 0.97);      // 아주 느릴 때만, 조금만 낮춘다
+      else if (emaDt < 30 && vq < 1) vq = Math.min(1, vq * 1.02);
     }
     vortexDrawn = false;
     update(dt, now);
