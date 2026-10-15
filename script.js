@@ -32,43 +32,132 @@
   });
   trunkText.setAttribute("aria-label", WORDS.join(" "));
 
-  // ── 열매: 오른쪽 긴 가지 끝쪽 아랫면에서 늘어뜨림 ────────────
-  const S = { x: D.fruit.stemX, y: D.fruit.stemY };
-  const F = { x: S.x + 4, y: S.y + 62 };
-  $("fruit").setAttribute("transform", `translate(${F.x} ${F.y})`);
-
-  const stemD = `M${S.x} ${S.y - 3} C${S.x + 1} ${S.y + 26} ${F.x + 6} ${F.y - 46} ${F.x} ${F.y - 22}`;
-  const stem = $("stem");
-  [
-    ["#eeff6b", 5, ".45", "url(#glow-soft)"],
-    ["#f4ff86", 2.4, "1", null],
-    ["#fbffc8", 1.5, "1", null],
-    ["#ffffff", .7, "1", null],
-  ].forEach(([stroke, w, op, filter]) => {
-    const p = document.createElementNS(NS, "path");
-    p.setAttribute("d", stemD);
-    p.setAttribute("stroke", stroke);
-    p.setAttribute("stroke-width", w);
-    p.setAttribute("opacity", op);
-    if (filter) p.setAttribute("filter", filter);
-    stem.appendChild(p);
+  // ── 열매: 가지 끝 아랫면에서 늘어뜨린다. 열매마다 색이 다르고(로딩 화면 이미지의 색), 위치·빛의 박자도 다르다 ──
+  const hex2rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const mixHex = (a, b, t) => {
+    const A = hex2rgb(a), B = hex2rgb(b);
+    return "#" + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, "0")).join("");
+  };
+  /** 기본색 하나에서 고리·빛무리에 쓰는 색들을 뽑는다 (바깥은 기본색, 중심으로 갈수록 흰색에 가까워진다) */
+  const palette = (base) => ({
+    c1: base, c2: mixHex(base, "#ffffff", .28), c3: mixHex(base, "#ffffff", .62),
+    cb: mixHex(base, "#ffffff", .5), cr: mixHex(base, "#ffffff", .58), cc: mixHex(base, "#ffffff", .9),
   });
+  const PAL_01 = { c1: "#eeff6b", c2: "#f4ff86", c3: "#fbffc8", cb: "#f8ffa0", cr: "#f8ffb4", cc: "#fffff0" };   // 처음 열매(네온 연노랑)
 
-  // 열매 주변에 떠오르는 빛 알갱이
-  const dust = document.querySelector(".dust");
-  for (let i = 0; i < 9; i++) {
-    const c = document.createElementNS(NS, "circle");
-    const ang = Math.random() * Math.PI * 2;
-    const rad = 14 + Math.random() * 20;
-    c.setAttribute("cx", (Math.cos(ang) * rad).toFixed(1));
-    c.setAttribute("cy", (Math.sin(ang) * rad).toFixed(1));
-    c.setAttribute("r", (0.5 + Math.random() * 0.9).toFixed(2));
-    c.style.setProperty("--d", (5 + Math.random() * 5).toFixed(1) + "s");
-    c.style.setProperty("--delay", (-Math.random() * 8).toFixed(1) + "s");
-    c.style.setProperty("--dx", ((Math.random() - 0.5) * 26).toFixed(0) + "px");
-    c.style.setProperty("--dy", (-(46 + Math.random() * 60)).toFixed(0) + "px");
-    dust.appendChild(c);
-  }
+  // anchor: 가지 밑면의 점 (나무 윤곽에서 열매가 들어갈 빈 공간이 있는 곳을 계산해 골랐다)
+  const FRUIT_DEFS = [
+    { id: "01", anchor: [D.fruit.stemX, D.fruit.stemY], pal: PAL_01, phase: 0 },
+    { id: "02", anchor: [521, 314], pal: palette("#ff2e3c"), phase: -1.7 },   // 붉은 일식
+    { id: "03", anchor: [160, 333], pal: palette("#ffa31a"), phase: -3.1 },   // 금빛 태양
+    { id: "04", anchor: [80, 284],  pal: palette("#3f86ff"), phase: -0.8 },   // 푸른 등대
+    { id: "05", anchor: [616, 352], pal: palette("#ffd93d"), phase: -2.4 },   // 금빛 별
+    { id: "06", anchor: [379, 407], pal: palette("#b26bff"), phase: -3.9 },   // 보라 손
+    { id: "07", anchor: [205, 450], pal: palette("#e8efff"), phase: -1.2 },   // 흰 테두리의 검은 별
+  ];
+
+  const gradHTML = ({ id, pal: p }) => `
+    <radialGradient id="bloom-${id}">
+      <stop offset="0"   stop-color="#ffffff" stop-opacity=".9"/>
+      <stop offset=".08" stop-color="${p.cc}" stop-opacity=".7"/>
+      <stop offset=".16" stop-color="${p.cb}" stop-opacity=".42"/>
+      <stop offset=".3"  stop-color="${p.c1}" stop-opacity=".2"/>
+      <stop offset=".5"  stop-color="${p.c1}" stop-opacity=".075"/>
+      <stop offset=".75" stop-color="${p.c1}" stop-opacity=".02"/>
+      <stop offset="1"   stop-color="${p.c1}" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core-${id}">
+      <stop offset="0"  stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset=".3" stop-color="${p.cc}" stop-opacity=".75"/>
+      <stop offset=".7" stop-color="${p.c2}" stop-opacity=".12"/>
+      <stop offset="1"  stop-color="${p.c2}" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="flare-${id}">
+      <stop offset="0"   stop-color="#ffffff" stop-opacity=".95"/>
+      <stop offset=".35" stop-color="${p.c2}" stop-opacity=".35"/>
+      <stop offset="1"   stop-color="${p.c1}" stop-opacity="0"/>
+    </radialGradient>`;
+
+  const STAR = "M0 -50Q8.5 -8.5 50 0Q8.5 8.5 0 50Q-8.5 8.5 -50 0Q-8.5 -8.5 0 -50Z";
+  const unitHTML = ({ id, pal: p, phase, pos }) => `
+    <g class="fruit-unit" data-id="${id}" style="--f1:${p.c1};--f2:${p.c2};--f3:${p.c3};--ph:${phase}s">
+      <g class="stem"></g>
+      <g class="fruit" role="button" tabindex="0" aria-label="세피로트의 열매 ${id}" transform="translate(${pos.x} ${pos.y})">
+        <g class="ripples" aria-hidden="true"></g>
+        <g class="bounce">
+          <g class="bloom" aria-hidden="true"><circle r="160" fill="url(#bloom-${id})"/></g>
+          <g class="flares" aria-hidden="true">
+            <ellipse rx="170" ry="2.4" fill="url(#flare-${id})"/>
+            <ellipse rx="2" ry="84" fill="url(#flare-${id})" opacity=".75"/>
+            <ellipse rx="64" ry="1.4" fill="url(#flare-${id})" opacity=".7" transform="rotate(32)"/>
+            <ellipse rx="64" ry="1.4" fill="url(#flare-${id})" opacity=".7" transform="rotate(-32)"/>
+          </g>
+          <circle r="22" fill="url(#core-${id})" class="core"/>
+          <g class="ring" fill="none" aria-hidden="true">
+            <circle r="22" stroke="${p.c1}" stroke-width="7" opacity=".5" filter="url(#glow-soft)"/>
+            <circle r="22" stroke="${p.c1}" stroke-width="4"/>
+            <circle r="22" stroke="${p.cr}" stroke-width="2.6"/>
+            <circle r="22" stroke="#ffffff" stroke-width="1.3"/>
+          </g>
+          <g class="orbit" aria-hidden="true">
+            <circle r="34" fill="none" stroke="${p.c2}" stroke-width="1" stroke-dasharray="1.5 7" vector-effect="non-scaling-stroke" opacity=".8"/>
+          </g>
+          <g class="star" aria-hidden="true">
+            <path d="${STAR}" fill="none" stroke="${p.c1}" stroke-width="3.2" opacity=".35" filter="url(#glow-soft)" stroke-linejoin="round"/>
+            <path d="${STAR}" fill="none" stroke="${p.c2}" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="${STAR}" fill="none" stroke="#ffffff" stroke-width=".6" stroke-linejoin="round"/>
+            <g class="star-dots">
+              ${[[0, -50], [50, 0], [0, 50], [-50, 0]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="5" fill="url(#core-${id})"/><circle cx="${x}" cy="${y}" r="1.8" fill="#fff"/>`).join("")}
+            </g>
+          </g>
+          <g class="dust" aria-hidden="true"></g>
+        </g>
+        <circle class="hit" r="46" fill="transparent"/>
+      </g>
+    </g>`;
+
+  const fruitList = FRUIT_DEFS.map((f) => {
+    const S = { x: f.anchor[0], y: f.anchor[1] };
+    return { ...f, S, pos: { x: S.x + 4, y: S.y + 62 } };
+  });
+  $("tree").querySelector("defs").insertAdjacentHTML("beforeend", fruitList.map(gradHTML).join(""));
+  $("fruit-group").insertAdjacentHTML("beforeend", fruitList.map(unitHTML).join(""));
+
+  fruitList.forEach((f) => {
+    const unit = $("fruit-group").querySelector(`.fruit-unit[data-id="${f.id}"]`);
+    f.unit = unit; f.node = unit.querySelector(".fruit");
+    const { S, pos: F, pal: p } = f;
+    const stemD = `M${S.x} ${S.y - 3} C${S.x + 1} ${S.y + 26} ${F.x + 6} ${F.y - 46} ${F.x} ${F.y - 22}`;
+    [
+      [p.c1, 5, ".45", "url(#glow-soft)"],
+      [p.c2, 2.4, "1", null],
+      [p.c3, 1.5, "1", null],
+      ["#ffffff", .7, "1", null],
+    ].forEach(([stroke, w, op, filter]) => {
+      const path = document.createElementNS(NS, "path");
+      path.setAttribute("d", stemD);
+      path.setAttribute("stroke", stroke);
+      path.setAttribute("stroke-width", w);
+      path.setAttribute("opacity", op);
+      if (filter) path.setAttribute("filter", filter);
+      unit.querySelector(".stem").appendChild(path);
+    });
+    // 열매 주변에 떠오르는 빛 알갱이
+    const dust = unit.querySelector(".dust");
+    for (let i = 0; i < 9; i++) {
+      const c = document.createElementNS(NS, "circle");
+      const ang = Math.random() * Math.PI * 2;
+      const rad = 14 + Math.random() * 20;
+      c.setAttribute("cx", (Math.cos(ang) * rad).toFixed(1));
+      c.setAttribute("cy", (Math.sin(ang) * rad).toFixed(1));
+      c.setAttribute("r", (0.5 + Math.random() * 0.9).toFixed(2));
+      c.style.setProperty("--d", (5 + Math.random() * 5).toFixed(1) + "s");
+      c.style.setProperty("--delay", (-Math.random() * 8).toFixed(1) + "s");
+      c.style.setProperty("--dx", ((Math.random() - 0.5) * 26).toFixed(0) + "px");
+      c.style.setProperty("--dy", (-(46 + Math.random() * 60)).toFixed(0) + "px");
+      dust.appendChild(c);
+    }
+  });
 
   // ── 세로로 긴 화면(모바일): 오른쪽 열매의 빛이 잘리지 않게 시야를 넓힌다 ──
   const svg = $("tree");
@@ -295,10 +384,8 @@
   window.RasyancutBgm = Bgm;
 
   // ── 열매 상호작용 ───────────────────────────────────────────
-  const fruit = $("fruit");
-
-  // 열매 설명 데이터. 열매가 늘어나면 항목을 추가한다. (내용은 임시 문구)
-  //   target: 입장 시 이동할 주소 (없으면 전환 연출만 재생)
+  // 열매 설명 데이터. (내용은 임시 문구)
+  //   target: 입장 시 이동할 주소 (없으면 전환 연출만 재생)   locked: 아직 들어갈 곳이 없는 열매
   const FRUITS = {
     "01": {
       kicker: "FRUIT · 01",
@@ -307,70 +394,62 @@
       target: null,
     },
   };
-  const CURRENT = "01";
+  fruitList.slice(1).forEach((f) => {
+    FRUITS[f.id] = { kicker: `FRUIT · ${f.id}`, title: `열매 ${f.id}`, desc: "아직 이야기가 정해지지 않은 열매입니다.", target: null, locked: true };
+  });
+  let CURRENT = "01";
+  let active = fruitList[0];
 
-  // 부드러운 스프링: 올리면 천천히 부풀며 살짝 튀어 오르고, 떼면 출렁이며 제자리로
-  const bounceG = fruit.querySelector(".bounce");
-  const ripples = fruit.querySelector(".ripples");
-  const sp = { s: 1, v: 0, y: 0, vy: 0, ts: 1, ty: 0, raf: 0, last: 0 };
-  const K = 64, C = 8.6;                       // 약한 강성·적당한 감쇠 → 느리고 부드러운 출렁임
-
-  const render = () => {
-    bounceG.style.transform = `translateY(${sp.y.toFixed(3)}px) scale(${sp.s.toFixed(4)})`;
-  };
-  const step = (now) => {
-    const dt = Math.min(0.032, (now - sp.last) / 1000 || 0.016);
-    sp.last = now;
-    sp.v += (-K * (sp.s - sp.ts) - C * sp.v) * dt;
-    sp.s += sp.v * dt;
-    sp.vy += (-K * (sp.y - sp.ty) - C * sp.vy) * dt;
-    sp.y += sp.vy * dt;
-    render();
-    const rest = Math.abs(sp.s - sp.ts) < 0.0004 && Math.abs(sp.v) < 0.004 &&
-                 Math.abs(sp.y - sp.ty) < 0.01 && Math.abs(sp.vy) < 0.05;
-    if (rest) { sp.s = sp.ts; sp.y = sp.ty; render(); sp.raf = 0; }
-    else sp.raf = requestAnimationFrame(step);
-  };
-  const kick = (ts, ty, vs, vy) => {
-    sp.ts = ts; sp.ty = ty; sp.v += vs; sp.vy += vy;
-    if (reduced) { sp.s = ts; sp.y = ty; render(); return; }
-    if (!sp.raf) { sp.last = performance.now(); sp.raf = requestAnimationFrame(step); }
-  };
-
-  // 파동: 커서가 올라가 있는 동안 일정 간격으로 퍼져 나감 (끝난 파동은 스스로 사라짐)
+  // 부드러운 스프링: 올리면 천천히 부풀며 살짝 튀어 오르고, 떼면 출렁이며 제자리로 (열매마다 따로 움직인다)
   const NS_ = "http://www.w3.org/2000/svg";
-  const spawnRipple = () => {
-    if (reduced) return;
-    ["soft", ""].forEach((cls) => {
-      const c = document.createElementNS(NS_, "circle");
-      c.setAttribute("r", 22);
-      c.setAttribute("class", cls ? "ripple " + cls : "ripple");
-      c.addEventListener("animationend", () => c.remove());
-      ripples.appendChild(c);
-    });
+  const K = 64, C = 8.6;                       // 약한 강성·적당한 감쇠 → 느리고 부드러운 출렁임
+  const makeFx = (node) => {
+    const bounceG = node.querySelector(".bounce");
+    const ripples = node.querySelector(".ripples");
+    const sp = { s: 1, v: 0, y: 0, vy: 0, ts: 1, ty: 0, raf: 0, last: 0 };
+    const render = () => { bounceG.style.transform = `translateY(${sp.y.toFixed(3)}px) scale(${sp.s.toFixed(4)})`; };
+    const step = (now) => {
+      const dt = Math.min(0.032, (now - sp.last) / 1000 || 0.016);
+      sp.last = now;
+      sp.v += (-K * (sp.s - sp.ts) - C * sp.v) * dt;
+      sp.s += sp.v * dt;
+      sp.vy += (-K * (sp.y - sp.ty) - C * sp.vy) * dt;
+      sp.y += sp.vy * dt;
+      render();
+      const rest = Math.abs(sp.s - sp.ts) < 0.0004 && Math.abs(sp.v) < 0.004 &&
+                   Math.abs(sp.y - sp.ty) < 0.01 && Math.abs(sp.vy) < 0.05;
+      if (rest) { sp.s = sp.ts; sp.y = sp.ty; render(); sp.raf = 0; }
+      else sp.raf = requestAnimationFrame(step);
+    };
+    const kick = (ts, ty, vs, vy) => {
+      sp.ts = ts; sp.ty = ty; sp.v += vs; sp.vy += vy;
+      if (reduced) { sp.s = ts; sp.y = ty; render(); return; }
+      if (!sp.raf) { sp.last = performance.now(); sp.raf = requestAnimationFrame(step); }
+    };
+    // 파동: 커서가 올라가 있는 동안 일정 간격으로 퍼져 나감 (끝난 파동은 스스로 사라짐)
+    const spawnRipple = () => {
+      if (reduced) return;
+      ["soft", ""].forEach((cls) => {
+        const c = document.createElementNS(NS_, "circle");
+        c.setAttribute("r", 22);
+        c.setAttribute("class", cls ? "ripple " + cls : "ripple");
+        c.addEventListener("animationend", () => c.remove());
+        ripples.appendChild(c);
+      });
+    };
+    let rippleTimer = 0;
+    const startWaves = () => { if (rippleTimer) return; spawnRipple(); rippleTimer = setInterval(spawnRipple, 900); };
+    const stopWaves = () => { clearInterval(rippleTimer); rippleTimer = 0; };
+    return { kick, spawnRipple, startWaves, stopWaves,
+             hoverIn() { kick(1.14, -2, 0.35, -26); startWaves(); },
+             hoverOut() { kick(1, 0, -0.1, 8); stopWaves(); } };
   };
-  let rippleTimer = 0;
-  const startWaves = () => {
-    if (rippleTimer) return;
-    spawnRipple();
-    rippleTimer = setInterval(spawnRipple, 900);
-  };
-  const stopWaves = () => { clearInterval(rippleTimer); rippleTimer = 0; };
-
-  const hoverIn = () => { kick(1.14, -2, 0.35, -26); startWaves(); };
-  const hoverOut = () => { kick(1, 0, -0.1, 8); stopWaves(); };
-  fruit.addEventListener("pointerenter", hoverIn);
-  fruit.addEventListener("pointerleave", hoverOut);
-  fruit.addEventListener("focus", () => { if (fruit.matches(":focus-visible")) hoverIn(); });
-  fruit.addEventListener("blur", hoverOut);
-  fruit.addEventListener("pointerdown", () => { if (camMode === "idle") { kick(0.96, 1, -0.3, 10); spawnRipple(); } });
-  fruit.addEventListener("pointerup", () => { if (camMode === "idle") kick(1.14, -2, 0.2, -14); });
 
   // ── 카메라: viewBox 를 애니메이션해 열매 쪽으로 확대 ─────────────
   const stage = $("stage");
   const panel = $("panel");
   const sheetMQ = window.matchMedia("(max-width: 760px), (max-aspect-ratio: 1/1)");   // 모바일: 아래에서 올라오는 시트
-  const FRUIT = { x: F.x, y: F.y };
+  let FRUIT = { x: active.pos.x, y: active.pos.y };
   const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
   const boxSize = () => { const r = svg.getBoundingClientRect(); return { W: r.width, H: r.height }; };
@@ -454,14 +533,28 @@
   };
 
   let busyCam = false;
-  const openFruit = async () => {
+  /** 설명창을 열매의 색으로 물들인다 */
+  const themePanel = (f) => {
+    const L = FRUITS[f.id];
+    panel.style.setProperty("--neon", f.pal.c1);
+    panel.style.setProperty("--neon-soft", f.pal.c2);
+    panel.style.setProperty("--neon-rgb", hex2rgb(f.pal.c1).join(", "));
+    panel.style.setProperty("--neon-soft-rgb", hex2rgb(f.pal.c2).join(", "));
+    el.enter.disabled = !!L.locked;
+    el.enter.querySelector(".btn-label").textContent = L.locked ? "준비 중" : "입장";
+  };
+
+  const openFruit = async (f) => {
     if (camMode !== "idle" || busyCam) return;
     busyCam = true;
+    active = f; CURRENT = f.id; FRUIT = { x: f.pos.x, y: f.pos.y };
+    fruitList.forEach((o) => o.unit.classList.toggle("active", o === f));
+    themePanel(f);
     camMode = "zooming";
     Sfx.play();                                   // 유물이 깨어나는 소리
     Bgm.duck();                                   // 배경음악을 잠깐 낮춰 효과음이 돋보이게
     stage.classList.add("lite", "zoomed", "zooming");   // lite: 확대 중에는 가벼운 나무로 교체
-    startWaves();
+    active.fx.startWaves();
     const tgt = zoomTarget();
     const done = flyTo(camFor(tgt.s, tgt.px, tgt.py), 1500);
     // 확대가 어느 정도 진행되면 설명창이 나타난다
@@ -475,7 +568,7 @@
     stage.classList.add("deep");                  // 확대가 끝나면 나무는 완전히 숨겨 부드럽게 유지
     camMode = "open";
     busyCam = false;
-    el.enter.focus({ preventScroll: true });
+    (el.enter.disabled ? el.close : el.enter).focus({ preventScroll: true });
   };
 
   const closeFruit = async () => {
@@ -495,7 +588,7 @@
     setTimeout(() => { lite.style.transition = ""; }, 1100);
     stage.classList.remove("zoomed");
     stage.classList.add("zooming");
-    stopWaves();
+    active.fx.stopWaves();
     camMode = "zooming";
     const b = camFromVB(baseVB());
     await flyTo(b, 1250);
@@ -512,7 +605,8 @@
     body.style.opacity = "";
     setTimeout(() => { body.style.transition = ""; }, 800);
     busyCam = false;
-    fruit.focus({ preventScroll: true });
+    fruitList.forEach((o) => o.unit.classList.remove("active"));
+    active.node.focus({ preventScroll: true });
   };
 
   const onResizeOpen = () => {
@@ -520,9 +614,18 @@
     applyCam(camFor(tgt.s, tgt.px, tgt.py));
   };
 
-  fruit.addEventListener("click", openFruit);
-  fruit.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openFruit(); }
+  fruitList.forEach((f) => {
+    const node = f.node, fx = (f.fx = makeFx(node));
+    node.addEventListener("pointerenter", fx.hoverIn);
+    node.addEventListener("pointerleave", fx.hoverOut);
+    node.addEventListener("focus", () => { if (node.matches(":focus-visible")) fx.hoverIn(); });
+    node.addEventListener("blur", fx.hoverOut);
+    node.addEventListener("pointerdown", () => { if (camMode === "idle") { fx.kick(0.96, 1, -0.3, 10); fx.spawnRipple(); } });
+    node.addEventListener("pointerup", () => { if (camMode === "idle") fx.kick(1.14, -2, 0.2, -14); });
+    node.addEventListener("click", () => openFruit(f));
+    node.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openFruit(f); }
+    });
   });
   el.close.addEventListener("click", closeFruit);
   el.back.addEventListener("click", closeFruit);
@@ -533,12 +636,13 @@
   });
   // 창 바깥(빈 곳)을 눌러도 닫힌다
   stage.addEventListener("click", (e) => {
-    if (camMode === "open" && !panel.contains(e.target) && !fruit.contains(e.target)) closeFruit();
+    if (camMode === "open" && !panel.contains(e.target) && !e.target.closest(".fruit")) closeFruit();
   });
   // 입장: 로딩 화면(무작위 이미지, 오른쪽 아래 로딩 표시)이 페이드인 → 라시안컷 맵 준비 → 페이드아웃
   const MapView = window.RasyancutMap, Loading = window.RasyancutLoading;
   el.enter.addEventListener("click", async () => {
     const target = FRUITS[CURRENT].target;
+    if (FRUITS[CURRENT].locked) return;
     if (target) { Transition.play(() => { window.location.href = target; }); return; }   // 주소가 정해진 열매는 그대로 이동
     if (!MapView || !Loading || Loading.isBusy()) return;
     await Loading.run(async () => {
