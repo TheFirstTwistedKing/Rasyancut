@@ -882,6 +882,8 @@ void main(){
     ctx.beginPath(); ctx.arc(0, 0, 64, 0, 7); ctx.stroke();
     ctx.beginPath(); const sR = 150, c0 = 18;
     ctx.moveTo(0, -sR); ctx.quadraticCurveTo(c0, -c0, sR, 0); ctx.quadraticCurveTo(c0, c0, 0, sR); ctx.quadraticCurveTo(-c0, c0, -sR, 0); ctx.quadraticCurveTo(-c0, -c0, 0, -sR);
+    ctx.closePath();                                          // 닫지 않으면 시작점(꼭대기)만 이음새가 없어 뭉툭해진다
+    ctx.lineJoin = "miter"; ctx.miterLimit = 24;               // 네 꼭짓점 모두 끝까지 뾰족하게
     ctx.stroke();
     ctx.restore();
     ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(0, 0, 11, 0, 7); ctx.fill();
