@@ -726,53 +726,6 @@ body.map-open .stage, body.map-open .panel { visibility: hidden; }
 }
 
 
-/* ───────── 맵의 공기: 빛은 위에서 흘러내리고, 어둠은 아래에서 올라온다 ───────── */
-.map-atmos { position: absolute; inset: 0; overflow: hidden; pointer-events: none; contain: layout paint; transition: opacity .8s ease; }
-.map-screen.burning .map-atmos, .map-screen.portaling .map-atmos { opacity: 0; }
-.map-screen:not(.open) .map-atmos * { animation-play-state: paused; }
-.map-atmos > i { position: absolute; display: block; will-change: transform, opacity; }
-/* 위쪽에 고인 은은한 빛 */
-.atm-top {
-  left: 0; right: 0; top: 0; height: 46%;
-  background: radial-gradient(ellipse 80% 100% at 50% 0%, rgba(244, 255, 150, .13), rgba(238, 255, 107, .04) 55%, transparent 100%);
-  animation: atm-breathe 9s ease-in-out infinite;
-}
-/* 빛줄기: 긴 꼬리를 끌며 천천히 흘러내린다 (머리는 아래쪽이 밝다) */
-.atm-light {
-  left: var(--x); top: -85%; width: var(--w); height: 85%;
-  background: linear-gradient(180deg, rgba(238, 255, 107, 0) 0%, rgba(244, 255, 150, calc(var(--a) * .35)) 45%, rgba(250, 255, 190, var(--a)) 80%, rgba(255, 255, 235, calc(var(--a) * 1.5)) 93%, rgba(238, 255, 107, 0) 100%);
-  -webkit-mask-image: linear-gradient(90deg, transparent, rgba(0, 0, 0, .35) 22%, #000 50%, rgba(0, 0, 0, .35) 78%, transparent);
-          mask-image: linear-gradient(90deg, transparent, rgba(0, 0, 0, .35) 22%, #000 50%, rgba(0, 0, 0, .35) 78%, transparent);
-  animation: atm-fall var(--d) linear infinite; animation-delay: var(--dl);
-}
-@keyframes atm-fall {
-  0%   { transform: translateY(0); opacity: 0; }
-  12%  { opacity: 1; }
-  80%  { opacity: 1; }
-  100% { transform: translateY(215vh); opacity: 0; }
-}
-/* 아래쪽에 깔린 어둠 */
-.atm-bottom {
-  left: 0; right: 0; bottom: 0; height: 52%;
-  background: linear-gradient(0deg, rgba(0, 0, 6, .6), rgba(0, 0, 8, .22) 55%, transparent 100%);
-  animation: atm-breathe 11s ease-in-out infinite reverse;
-}
-/* 아래에서 위로 흘러 올라오는 어둠의 안개 */
-.atm-dark {
-  left: var(--x); bottom: -45%; width: var(--w); height: 52vmax; margin-left: -8vmax;
-  background: radial-gradient(ellipse 50% 50% at 50% 55%, rgba(0, 0, 8, var(--a)), rgba(0, 0, 8, calc(var(--a) * .4)) 45%, transparent 75%);
-  animation: atm-rise var(--d) linear infinite; animation-delay: var(--dl);
-}
-@keyframes atm-rise {
-  0%   { transform: translateY(0) scale(1); opacity: 0; }
-  18%  { opacity: 1; }
-  70%  { opacity: .75; }
-  100% { transform: translateY(-140vh) scale(1.45); opacity: 0; }
-}
-@keyframes atm-breathe { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
-@media (max-width: 760px) { .atm-light:nth-child(even), .atm-dark:nth-child(even) { display: none; } }
-:root[data-reduce-motion="true"] .map-atmos * { animation: none; }
-
 /* ───────── 맵 경계: 불타는 연출 / 가속 / 원형 미니맵 ───────── */
 .fire-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
 .fire-canvas.on { display: block; }

@@ -714,6 +714,90 @@ void main(){
     ctx.restore();
   }
 
+  // ───────────────────────── 맵의 공기: 맵 전체에 빛이 위에서 흘러내리고, 어둠이 아래에서 올라간다 ─────────────────────────
+  // 화면에 붙은 효과가 아니라 월드 좌표에 그린다: 지도를 끌거나 확대하면 빛줄기·어둠도 지도와 함께 움직인다.
+  // 월드를 가로 칸으로 나누고 칸마다 해시로 빛줄기를 정해, 세로로 되풀이되는 줄기가 각자 다른 속도로 흘러내린다 (보이는 칸만 그린다).
+  let atmosTex = null;
+  function makeAtmosTex() {
+    // 빛줄기: 위(꼬리)는 투명 → 아래(머리)로 갈수록 밝아지고 맨 끝은 하얀 방울. 가로는 가운데가 진한 가우시안
+    const sw = 32, sh = 512, sc = mk(sw, sh), sg = sc.getContext("2d"), id = sg.createImageData(sw, sh);
+    for (let y = 0; y < sh; y++) {
+      const v = y / (sh - 1);
+      const body = Math.pow(v, 1.5) * (v < 0.93 ? 1 : Math.max(0, 1 - (v - 0.93) / 0.07)) * 0.9 + (v > 0.9 && v < 0.99 ? 0.6 * Math.exp(-Math.pow((v - 0.955) / 0.022, 2)) : 0);
+      for (let x = 0; x < sw; x++) {
+        const hx = Math.exp(-Math.pow((x - sw / 2 + 0.5) / (sw * 0.2), 2));
+        const a = clamp(body * hx, 0, 1), k = (y * sw + x) * 4, wh = clamp((v - 0.8) * 5, 0, 1);       // 머리 쪽은 하얗게
+        id.data[k] = 244 + 11 * wh; id.data[k + 1] = 255; id.data[k + 2] = 150 + 85 * wh; id.data[k + 3] = Math.round(a * 255);
+      }
+    }
+    sg.putImageData(id, 0, 0);
+    // 넓고 옅은 빛의 장막
+    const vw = 96, vh = 256, vc = mk(vw, vh), vg = vc.getContext("2d"), vd = vg.createImageData(vw, vh);
+    for (let y = 0; y < vh; y++) for (let x = 0; x < vw; x++) {
+      const v = y / (vh - 1), hx = Math.exp(-Math.pow((x - vw / 2 + 0.5) / (vw * 0.28), 2)), k = (y * vw + x) * 4;
+      vd.data[k] = 244; vd.data[k + 1] = 255; vd.data[k + 2] = 170; vd.data[k + 3] = Math.round(clamp(Math.pow(v, 1.4) * Math.sin(Math.PI * Math.min(1, v * 1.02)) * hx, 0, 1) * 255);
+    }
+    vg.putImageData(vd, 0, 0);
+    // 어둠의 안개: 겹친 여러 덩이로 가장자리가 울퉁불퉁한 짙은 덩어리
+    const ms = 256, mc = mk(ms, ms), mg = mc.getContext("2d"), r = rng32(77);
+    for (let i = 0; i < 9; i++) {
+      const x = ms * (0.28 + 0.44 * r()), y = ms * (0.28 + 0.44 * r()), rad = ms * (0.2 + 0.2 * r());
+      const g = mg.createRadialGradient(x, y, 0, x, y, rad);
+      g.addColorStop(0, "rgba(0,0,8,0.62)"); g.addColorStop(0.55, "rgba(0,0,8,0.26)"); g.addColorStop(1, "rgba(0,0,8,0)");
+      mg.fillStyle = g; mg.fillRect(0, 0, ms, ms);
+    }
+    atmosTex = { streak: sc, veil: vc, mist: mc };
+  }
+
+  /** 위에서 아래로 흘러내리는 빛 (월드 좌표) */
+  function drawLightFlow(t) {
+    if (!atmosTex) makeAtmosTex();
+    const z = cam.z, vx0 = cam.x - cw / 2 / z, vx1 = cam.x + cw / 2 / z, vy0 = cam.y - ch / 2 / z, vy1 = cam.y + ch / 2 / z;
+    const Wc = 380, P = 5200, far = z < 0.12;
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    const i0 = Math.floor(vx0 / Wc) - 1, i1 = Math.floor(vx1 / Wc) + 1;
+    const draw = (tex, i, n, wMin, wVar, lenMul, vMin, vVar, aMin, aVar, seed) => {
+      const hx = hash2(i, n, seed), hw = hash2(i, n, seed + 1), hl = hash2(i, n, seed + 2), hv = hash2(i, n, seed + 3), hp = hash2(i, n, seed + 4), ha = hash2(i, n, seed + 5);
+      const cx = (i + hx) * Wc, w = Math.max((wMin + wVar * hw), 2.6 / z), L = P * lenMul * (0.7 + 0.7 * hl), Pn = P * (0.9 + 0.5 * hp) * lenMul;
+      const v = vMin + vVar * hv, base = (((t * v + hp * 7919) % Pn) + Pn) % Pn;
+      const a = (aMin + aVar * ha) * (0.78 + 0.22 * Math.sin(t * (0.5 + hv) + hp * 40));
+      if (Math.abs(cx) > R_MAP + 600) return;
+      for (let k = Math.ceil((vy0 - base) / Pn); k <= Math.floor((vy1 + L - base) / Pn); k++) {
+        const yh = base + k * Pn;
+        if (Math.hypot(cx, yh) > R_MAP) continue;
+        ctx.globalAlpha = a; ctx.drawImage(tex, cx - w / 2, yh - L, w, L);
+      }
+    };
+    for (let i = i0; i <= i1; i++) {
+      draw(atmosTex.streak, i, 0, 70, 110, 0.9, 170, 190, 0.5, 0.45, 301);          // 가는 빛줄기 (칸마다 하나)
+      if (!far) draw(atmosTex.streak, i, 1, 140, 200, 1.2, 120, 150, 0.42, 0.4, 311);   // 조금 굵고 긴 빛줄기
+      if (i % 3 === 0) draw(atmosTex.veil, i, 2, 650, 900, 1.6, 70, 90, 0.2, 0.16, 321);  // 넓고 옅은 빛의 장막
+    }
+    ctx.restore();
+  }
+
+  /** 아래에서 위로 흘러 올라가는 어둠 (월드 좌표) */
+  function drawMist(t) {
+    if (!atmosTex) makeAtmosTex();
+    const z = cam.z, vx0 = cam.x - cw / 2 / z, vx1 = cam.x + cw / 2 / z, vy0 = cam.y - ch / 2 / z, vy1 = cam.y + ch / 2 / z;
+    const Cm = 3000, Pm = 9500;
+    const i0 = Math.floor(vx0 / Cm) - 1, i1 = Math.floor(vx1 / Cm) + 1;
+    ctx.save(); ctx.globalCompositeOperation = "source-over";
+    for (let i = i0; i <= i1; i++) {
+      const hx = hash2(i, 0, 401), hs = hash2(i, 0, 402), hv = hash2(i, 0, 403), hp = hash2(i, 0, 404), ha = hash2(i, 0, 405), hq = hash2(i, 0, 406);
+      const s = 2400 + 2200 * hs, v = 120 + 160 * hv, Pn = Pm * (0.9 + 0.5 * hq);
+      const cx = (i + hx) * Cm + Math.sin(t * 0.09 + hp * 30) * 380, base = (((hp * Pn - t * v) % Pn) + Pn) % Pn;   // 위로(y 가 줄어드는 쪽) 흐른다
+      if (Math.abs(cx) > R_MAP + 800) continue;
+      ctx.globalAlpha = 0.62 + 0.3 * ha;
+      for (let k = Math.ceil((vy0 - s - base) / Pn); k <= Math.floor((vy1 + s - base) / Pn); k++) {
+        const yc = base + k * Pn;
+        if (Math.hypot(cx, yc) > R_MAP + 600) continue;
+        ctx.drawImage(atmosTex.mist, cx - s / 2, yc - s / 2, s, s);
+      }
+    }
+    ctx.restore();
+  }
+
   function drawNebula() {
     // 세계가 매우 크므로 타일(7000 단위)마다 해시로 성운 덩어리 1~2개를 만들어, 보이는 타일만 그린다
     const z = cam.z, T = 7000;
@@ -1019,6 +1103,7 @@ void main(){
     if (!SKIP.has('nebula')) drawNebula();
     if (!SKIP.has('grid')) drawGridAndEdge(t);
     if (!SKIP.has('sanct')) drawSanctuary(t);
+    if (!SKIP.has('atmos')) drawLightFlow(t);
 
     const z = cam.z, vx0 = cam.x - cw / 2 / z, vx1 = cam.x + cw / 2 / z, vy0 = cam.y - ch / 2 / z, vy1 = cam.y + ch / 2 / z;
     if (!SKIP.has('gates')) for (const g of gates) {
@@ -1032,6 +1117,7 @@ void main(){
       drawSpecial(s, t, z);
     }
     ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
+    if (!SKIP.has('atmos')) drawMist(t);
     // 화면 공간 요소
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // 경계 밖 사선 무늬
