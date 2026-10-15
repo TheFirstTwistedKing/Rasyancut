@@ -311,10 +311,10 @@
   // 그래서 첫 입력 때 서서히 커지며 시작하고, 오른쪽 위 버튼으로 끄고 켤 수 있다. (선택은 기억됨)
   const Bgm = (() => {
     // 곡마다 밑바탕에 깔리는 정도(vol)를 따로 둔다 (효과음 0.8 대비 약 -12dB). 더 크게/작게는 이 값만 바꾼다
-    //   vanguard 는 원곡이 main 보다 약 5dB 커서 그만큼 낮춰 비슷하게 들리게 맞췄다
+    //   vanguard 는 원곡이 main 보다 약 2dB 작아서 그만큼 올려 비슷하게 들리게 맞췄다
     const TRACKS = {
       main:     { src: "assets/audio/bgm.mp3", vol: 0.2 },
-      vanguard: { src: "assets/audio/bgm-vanguard.mp3", vol: 0.12 },      // 라시안컷 : 뱅가드 입장 후
+      vanguard: { src: "assets/audio/bgm-vanguard.mp3", vol: 0.26 },      // 라시안컷 : 뱅가드 입장 후
     };
     let trackName = "main";
     const curVol = () => TRACKS[trackName].vol;
