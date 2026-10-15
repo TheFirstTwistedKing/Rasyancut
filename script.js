@@ -196,6 +196,100 @@
   })();
   window.RasyancutSfx = Sfx;               // 이후 화면에서도 같은 소리를 재사용
 
+  // ── 배경음악 ───────────────────────────────────────────────
+  // 브라우저는 사용자의 첫 클릭/키 입력 전에는 소리를 낼 수 없다.
+  // 그래서 첫 입력 때 서서히 커지며 시작하고, 오른쪽 위 버튼으로 끄고 켤 수 있다. (선택은 기억됨)
+  const Bgm = (() => {
+    const SRC = "assets/audio/bgm.mp3";
+    const VOL = 0.55;
+    const KEY = "rasyancut.bgm";
+    const el = new Audio(SRC);
+    el.loop = true;
+    el.preload = "auto";
+    const AC = window.AudioContext || window.webkitAudioContext;
+    // 파일을 직접 연 경우(file://)에는 WebAudio 로 흘리면 무음이 되므로 요소 볼륨으로 조절한다
+    const viaCtx = !!AC && location.protocol !== "file:";
+    let ctx = null, gain = null, want = true, playing = false, level = 0, fadeRaf = 0, wasPlaying = false;
+    try { want = localStorage.getItem(KEY) !== "off"; } catch (_) { /* 저장소 사용 불가 */ }
+    const btn = $("bgm-toggle");
+
+    const render = () => {
+      btn.classList.toggle("on", playing);
+      btn.classList.toggle("muted", !want);
+      btn.setAttribute("aria-pressed", String(want));
+      btn.setAttribute("aria-label", want ? "배경음악 끄기" : "배경음악 켜기");
+    };
+    const save = () => { try { localStorage.setItem(KEY, want ? "on" : "off"); } catch (_) { /* 무시 */ } };
+    const setLevel = (v) => {
+      level = v;
+      if (gain) gain.gain.value = v; else el.volume = Math.min(1, Math.max(0, v));
+    };
+    const ramp = (to, ms) => new Promise((resolve) => {
+      cancelAnimationFrame(fadeRaf);
+      const from = level, t0 = performance.now();
+      const tick = (now) => {
+        const k = Math.min(1, (now - t0) / ms);
+        setLevel(from + (to - from) * k * k * (3 - 2 * k));
+        if (k < 1) fadeRaf = requestAnimationFrame(tick); else resolve();
+      };
+      fadeRaf = requestAnimationFrame(tick);
+    });
+
+    let starting = false;
+    const start = async () => {
+      if (!want || playing || starting) return;
+      starting = true;
+      try {
+        if (viaCtx && !ctx) {
+          ctx = new AC();
+          gain = ctx.createGain();
+          gain.gain.value = 0;
+          ctx.createMediaElementSource(el).connect(gain).connect(ctx.destination);
+        }
+        if (ctx && ctx.state === "suspended") await ctx.resume();
+        if (level === 0) setLevel(0);
+        await el.play();
+        playing = true;
+        render();
+        ramp(VOL, 3200);
+      } catch (_) { /* 사용자 입력이 아직 없으면 실패 → 다음 입력 때 다시 시도 */ }
+      finally { starting = false; }
+    };
+    const stop = async () => {
+      want = false; save(); render();
+      await ramp(0, 600);
+      if (!want) { el.pause(); playing = false; render(); }
+    };
+    const toggle = () => { if (want) stop(); else { want = true; save(); render(); start(); } };
+
+    btn.addEventListener("click", () => { if (want && !playing) start(); else toggle(); });
+
+    // 첫 사용자 입력에서 시작 (버튼 자신을 누른 경우는 버튼 쪽에서 처리)
+    const gestureStart = (e) => {
+      if (e.target && e.target.closest && e.target.closest("#bgm-toggle")) return;
+      start().then(() => {
+        if (playing) ["click", "keydown", "pointerup", "touchend"].forEach((ev) => window.removeEventListener(ev, gestureStart, true));
+      });
+    };
+    ["click", "keydown", "pointerup", "touchend"].forEach((ev) => window.addEventListener(ev, gestureStart, true));
+
+    // 탭이 가려지면 멈추고, 돌아오면 이어서
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) { wasPlaying = playing && want; if (wasPlaying) el.pause(); }
+      else if (wasPlaying && want) { el.play().catch(() => {}); wasPlaying = false; }
+    });
+
+    /** 효과음이 울릴 때 잠깐 낮췄다가 되돌린다 */
+    const duck = () => {
+      if (!playing || !want) return;
+      ramp(VOL * 0.35, 120).then(() => setTimeout(() => { if (want) ramp(VOL, 1500); }, 450));
+    };
+
+    render();                                  // 시작은 첫 사용자 입력에서 (그 전에는 브라우저가 막는다)
+    return { start, stop, toggle, duck };
+  })();
+  window.RasyancutBgm = Bgm;
+
   // ── 열매 상호작용 ───────────────────────────────────────────
   const fruit = $("fruit");
 
@@ -361,6 +455,7 @@
     busyCam = true;
     camMode = "zooming";
     Sfx.play(0.8);                                // 유물이 깨어나는 소리
+    Bgm.duck();                                   // 배경음악을 잠깐 낮춰 효과음이 돋보이게
     stage.classList.add("zoomed", "zooming");
     startWaves();
     const tgt = zoomTarget();
