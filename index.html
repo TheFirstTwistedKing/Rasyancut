@@ -17,7 +17,9 @@
     </div>
 
     <div class="tree-box" id="tree-box">
-    <svg id="tree" class="tree" viewBox="10 -30 660 870" role="img" aria-label="세피로트의 나무" preserveAspectRatio="xMidYMid meet">
+    <!-- 등장 중 훑고 올라가는 스캔선 (HTML 레이어라서 GPU 가 움직인다) -->
+    <div class="reveal-front" id="reveal-front" aria-hidden="true"></div>
+    <svg id="tree" class="tree revealing" viewBox="10 -30 660 870" role="img" aria-label="세피로트의 나무" preserveAspectRatio="xMidYMid meet">
       <defs>
         <!-- 데이터는 assets/tree-data.js 에서 script.js 가 채운다 -->
         <path id="tree-outline" fill-rule="evenodd"/>
@@ -47,21 +49,11 @@
           <stop offset="1" stop-color="#eeff6b" stop-opacity="0"/>
         </linearGradient>
 
-        <!-- 아래서 위로 자라는 등장 마스크 -->
-        <linearGradient id="reveal-grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#000"/>
-          <stop offset=".2417" stop-color="#000"/>
-          <stop offset=".2706" stop-color="#fff"/>
-          <stop offset="1" stop-color="#fff"/>
-        </linearGradient>
         <linearGradient id="front-grad" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0" stop-color="#eeff6b" stop-opacity="0"/>
           <stop offset=".5" stop-color="#ffffff" stop-opacity=".95"/>
           <stop offset="1" stop-color="#eeff6b" stop-opacity="0"/>
         </linearGradient>
-        <mask id="reveal" maskUnits="userSpaceOnUse" x="-200" y="-200" width="1100" height="1500">
-          <rect id="reveal-rect" x="-200" y="-30" width="1100" height="3600" fill="url(#reveal-grad)"/>
-        </mask>
 
         <radialGradient id="halo-ring">
           <stop offset=".55" stop-color="#eeff6b" stop-opacity="0"/>
@@ -84,7 +76,7 @@
       </g>
 
         <!-- 나무 몸통 (아래→위 등장 마스크 적용) -->
-        <g id="tree-body" mask="url(#reveal)">
+        <g id="tree-body">
           <!-- 검정 속 -->
           <use href="#tree-outline" fill="#000" fill-rule="evenodd"/>
           <use href="#tree-outline" fill="url(#scanlines)" fill-rule="evenodd"/>
@@ -113,8 +105,6 @@
           <use href="#tree-outline-lite" fill="none" stroke="#ffffff" stroke-width=".9" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
         </g>
 
-        <!-- 등장 중 훑고 올라가는 스캔선 -->
-        <rect id="reveal-front" x="-200" y="860" width="1100" height="2" fill="url(#front-grad)" opacity="0"/>
 
         <!-- 기둥 위 라틴어 (세로) -->
         <g id="trunk-label" class="trunk-label" aria-hidden="true">

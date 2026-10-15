@@ -147,7 +147,7 @@
     });
     // 열매 주변에 떠오르는 빛 알갱이
     const dust = unit.querySelector(".dust");
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 5; i++) {
       const c = document.createElementNS(NS, "circle");
       const ang = Math.random() * Math.PI * 2;
       const rad = 14 + Math.random() * 20;
@@ -188,22 +188,36 @@
   fitView();
   window.addEventListener("resize", () => { fitView(); if (camMode === "open") onResizeOpen(); });
 
-  // ── 등장: 뿌리에서 가지 끝까지 자라듯 드러남 ────────────────
+  // ── 등장: 뿌리에서 가지 끝까지 자라듯 켜진다 ────────────────
+  // 켜지는 경계(마스크)와 스캔선은 CSS 변수·transform 만 바꾼다 → 나무 자체는 다시 그려지지 않아 끊기지 않는다
   const VIEW_TOP = -30, VIEW_H = 870;
-  const revealRect = $("reveal-rect");
   const front = $("reveal-front");
-  const travel = VIEW_H * 1.12;                  // 페더 끝이 화면 위로 완전히 빠지는 거리
-  const frontStartY = VIEW_TOP + VIEW_H + 52;       // 페더 띠의 중앙
+  const travel = VIEW_H * 1.12;                  // 경계(번짐 포함)가 화면 위로 완전히 빠지는 거리
+  const frontStartY = VIEW_TOP + VIEW_H + 52;       // 경계의 중앙(svg 단위)
+  const FEATHER = 52;                               // 경계가 번지는 폭의 절반(svg 단위)
 
   const label = $("trunk-label");
   const fruitGroup = $("fruit-group");
 
+  /** 켜지는 경계를 svg 단위 y 에서 화면 px 로 바꿔 적용 */
+  const place = (ySvg, opacity) => {
+    const box = $("tree-box"), W = box.clientWidth, H = box.clientHeight;
+    const [vx, vy, vw, vh] = baseVB();
+    const s = Math.min(W / vw, H / vh), oy = (H - vh * s) / 2;
+    const fy = oy + (ySvg - vy) * s;
+    svg.style.setProperty("--fy", fy.toFixed(1) + "px");
+    svg.style.setProperty("--ff", (FEATHER * s).toFixed(1) + "px");
+    front.style.transform = `translateY(${fy.toFixed(1)}px)`;
+    front.style.opacity = opacity;
+  };
+
   const finish = () => {
-    $("tree-body").removeAttribute("mask");        // 등장이 끝나면 마스크는 필요 없다(렌더 비용 절감)
-    revealRect.setAttribute("y", VIEW_TOP - travel);
-    front.setAttribute("opacity", 0);
+    svg.classList.remove("revealing");              // 등장이 끝나면 마스크는 필요 없다(렌더 비용 절감)
+    front.style.opacity = 0;
     label.classList.add("on");
-    fruitGroup.classList.add("on");
+    svgFruits.classList.add("on");
+    // 열매가 떠오르는 페이드(1.2초)가 끝난 뒤에 바람·열매 빛 같은 상시 애니메이션을 시작한다 (겹치면 그 순간 끊긴다)
+    setTimeout(() => $("stage").classList.add("alive"), reduced ? 0 : 900);
   };
 
   if (reduced) {
@@ -211,20 +225,19 @@
   } else {
     const DUR = 3400;
     const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
-    const t0 = performance.now();
-    let labelOn = false, fruitOn = false;
+    let t0 = 0, labelOn = false, fruitOn = false;
+    place(frontStartY, 0);
     const tick = (now) => {
+      if (!t0) t0 = now;                            // 첫 프레임(처음 그리기가 가장 무겁다)이 끝난 시점부터 시간을 잰다
       const t = Math.min(1, (now - t0) / DUR);
       const e = ease(t);
-      revealRect.setAttribute("y", VIEW_TOP - travel * e);
-      front.setAttribute("y", frontStartY - travel * e);
-      front.setAttribute("opacity", t < 0.04 ? t / 0.04 : t > 0.93 ? (1 - t) / 0.07 : 1);
+      place(frontStartY - travel * e, t < 0.04 ? t / 0.04 : t > 0.93 ? (1 - t) / 0.07 : 1);
       if (!labelOn && t > 0.55) { label.classList.add("on"); labelOn = true; }
-      if (!fruitOn && t > 0.82) { fruitGroup.classList.add("on"); fruitOn = true; }
+      if (!fruitOn && t > 0.82) { svgFruits.classList.add("on"); fruitOn = true; }
       if (t < 1) requestAnimationFrame(tick); else finish();
     };
-    revealRect.setAttribute("y", VIEW_TOP);
-    requestAnimationFrame(tick);
+    requestAnimationFrame(() => requestAnimationFrame(tick));
+    window.addEventListener("resize", () => { if (svg.classList.contains("revealing")) place(frontStartY, 0); });
   }
 
   // ── 화면 전환 ───────────────────────────────────────────────

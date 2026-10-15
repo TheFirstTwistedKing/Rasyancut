@@ -127,6 +127,24 @@ body {
   display: block;
 }
 .tree-fruits { position: absolute; inset: 0; pointer-events: none; }
+
+/* 등장하는 동안에는 켜지는 연출만 움직인다. 흔들림·열매 빛·먼지 같은 상시 애니메이션은 다 켜진 뒤(.alive)에 시작한다
+   (한꺼번에 돌면 켜지는 동안 끊긴다. paused 로 두면 시작 모습 그대로 있다가 자연스럽게 이어진다) */
+.stage:not(.alive) :is(.tree, .tree *, .fruit-unit, .fruit-unit *, .fruit-unit *::before) { animation-play-state: paused !important; }
+
+/* 나무가 아래에서 위로 켜지는 등장: SVG 마스크 대신 CSS 마스크(+스캔선은 별도 레이어)로 해서
+   켜지는 동안 무거운 나무를 매 프레임 다시 그리지 않는다. --fy: 켜지는 경계의 높이(px), --ff: 경계가 번지는 폭의 절반(px) */
+#tree.revealing {
+  -webkit-mask-image: linear-gradient(to bottom, transparent calc(var(--fy, 100%) - var(--ff, 40px)), #000 calc(var(--fy, 100%) + var(--ff, 40px)));
+          mask-image: linear-gradient(to bottom, transparent calc(var(--fy, 100%) - var(--ff, 40px)), #000 calc(var(--fy, 100%) + var(--ff, 40px)));
+}
+.reveal-front {
+  position: absolute; left: -4%; right: -4%; top: 0; height: 2px; z-index: 2;
+  background: linear-gradient(90deg, rgba(238, 255, 107, 0), rgba(255, 255, 255, .95) 50%, rgba(238, 255, 107, 0));
+  box-shadow: 0 0 14px 3px rgba(238, 255, 107, .45);
+  opacity: 0; pointer-events: none; will-change: transform, opacity;
+  transform: translateY(2000px);
+}
 .tree-fruits .fruit { pointer-events: auto; }
 
 .base { opacity: 0; animation: fade-in 1.2s .2s forwards; }
@@ -149,8 +167,9 @@ body {
 }
 
 /* ───────── 열매 ───────── */
-.fruit-group { opacity: 0; transition: opacity 1.2s ease; }
-.fruit-group.on { opacity: 1; }
+/* 열매 레이어는 통째로 떠오른다 (SVG 안의 opacity 보다 레이어 opacity 가 훨씬 가볍다) */
+.tree-fruits { opacity: 0; transition: opacity 1.2s ease; }
+.tree-fruits.on { opacity: 1; }
 
 .stem path { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 
