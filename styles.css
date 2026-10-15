@@ -646,3 +646,42 @@ body.map-open .stage, body.map-open .panel { visibility: hidden; }
 @media (min-width: 900px) and (orientation: landscape) {
   .loading-img { left: 28%; top: 18%; width: 44%; height: 64%; }
 }
+
+/* ───────── 맵 경계: 불타는 연출 / 가속 / 원형 미니맵 ───────── */
+.burn-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 6;
+  opacity: 0; visibility: hidden;
+  transition: opacity .5s ease, visibility 0s .5s;
+}
+.burn-canvas.on { opacity: 1; visibility: visible; transition: opacity .35s ease; }
+.map-toast {
+  position: absolute; left: 50%; top: 22%; z-index: 7;
+  transform: translateX(-50%);
+  max-width: 90vw;
+  font: 700 clamp(18px, 3.4vw, 30px)/1.5 "Noto Serif KR", serif; letter-spacing: .06em; text-align: center;
+  color: #fff;
+  text-shadow: 0 0 18px rgba(255, 140, 40, .95), 0 0 42px rgba(255, 80, 10, .7);
+  opacity: 0; pointer-events: none;
+  transition: opacity .9s ease;
+}
+.map-toast.on { opacity: 1; }
+.map-screen.burning .map-hud { opacity: .12; transition: opacity .6s; }
+.minimap { border-radius: 50%; }
+
+.boost-btn {
+  display: none;
+  position: absolute;
+  left: calc(max(22px, env(safe-area-inset-left)) + 30px);
+  bottom: calc(max(22px, env(safe-area-inset-bottom)) + 6px + 118px + 14px);
+  width: 58px; height: 58px; border-radius: 50%;
+  place-items: center;
+  color: var(--neon-soft);
+  background: radial-gradient(circle, rgba(238, 255, 107, .14), rgba(0, 0, 0, .5) 70%);
+  border: 1px solid rgba(244, 255, 134, .5);
+  box-shadow: 0 0 18px rgba(238, 255, 107, .18);
+  touch-action: none;
+  transition: box-shadow .2s, background .2s, transform .2s;
+}
+.boost-btn.held { background: radial-gradient(circle, rgba(238, 255, 107, .55), rgba(0, 0, 0, .35) 75%); box-shadow: 0 0 30px rgba(238, 255, 107, .8); transform: scale(.94); color: #fff; }
+@media (pointer: coarse) { .boost-btn { display: grid; } }
