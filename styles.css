@@ -617,15 +617,6 @@ body.map-open .stage, body.map-open .panel { visibility: hidden; }
 }
 .loading.show { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity .8s ease; }
 .loading-frame { position: absolute; inset: 0; background: #000; overflow: hidden; }
-/* 화면 가장자리의 연노랑 선 */
-.loading-frame::after {
-  content: "";
-  position: absolute;
-  inset: max(7px, env(safe-area-inset-top)) max(7px, env(safe-area-inset-right)) max(7px, env(safe-area-inset-bottom)) max(7px, env(safe-area-inset-left));
-  border: 2px solid var(--neon-soft);
-  box-shadow: 0 0 14px rgba(238, 255, 107, .55), inset 0 0 14px rgba(238, 255, 107, .2);
-  pointer-events: none;
-}
 /* 그림은 작게, 가운데에 */
 .loading-img {
   position: absolute;
