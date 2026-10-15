@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>Rasyancut</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="stage" id="stage">
+    <div class="hud" aria-hidden="true">
+      <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+    </div>
+
+    <svg id="tree" class="tree" viewBox="10 -30 660 870" role="img" aria-label="세피로트의 나무" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <!-- 데이터는 assets/tree-data.js 에서 script.js 가 채운다 -->
+        <path id="tree-outline" fill-rule="evenodd"/>
+        <clipPath id="tree-clip"><use href="#tree-outline" clip-rule="evenodd"/></clipPath>
+
+        <!-- 네온 번짐 -->
+        <filter id="glow-wide" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="7"/>
+        </filter>
+        <filter id="glow-soft" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="2.6"/>
+        </filter>
+        <filter id="glow-text" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="2.2" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="blur-1"><feGaussianBlur stdDeviation="1"/></filter>
+
+        <!-- 홀로그램 몸통 줄무늬 -->
+        <pattern id="scanlines" width="4" height="4" patternUnits="userSpaceOnUse">
+          <rect width="4" height="1" fill="#eeff6b" opacity=".07"/>
+        </pattern>
+        <linearGradient id="sweep" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#eeff6b" stop-opacity="0"/>
+          <stop offset=".5" stop-color="#fbffd0" stop-opacity=".22"/>
+          <stop offset="1" stop-color="#eeff6b" stop-opacity="0"/>
+        </linearGradient>
+
+        <!-- 아래서 위로 자라는 등장 마스크 -->
+        <linearGradient id="reveal-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#000"/>
+          <stop offset=".2417" stop-color="#000"/>
+          <stop offset=".2706" stop-color="#fff"/>
+          <stop offset="1" stop-color="#fff"/>
+        </linearGradient>
+        <linearGradient id="front-grad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#eeff6b" stop-opacity="0"/>
+          <stop offset=".5" stop-color="#ffffff" stop-opacity=".95"/>
+          <stop offset="1" stop-color="#eeff6b" stop-opacity="0"/>
+        </linearGradient>
+        <mask id="reveal" maskUnits="userSpaceOnUse" x="-200" y="-200" width="1100" height="1500">
+          <rect id="reveal-rect" x="-200" y="-30" width="1100" height="3600" fill="url(#reveal-grad)"/>
+        </mask>
+
+        <!-- 열매의 빛: 중심은 하얗고 바깥으로 갈수록 연노랑 → 어둠 (역제곱 감쇠를 흉내낸 다단 그라디언트) -->
+        <radialGradient id="bloom">
+          <stop offset="0"    stop-color="#ffffff" stop-opacity=".9"/>
+          <stop offset=".08"  stop-color="#fffff0" stop-opacity=".7"/>
+          <stop offset=".16"  stop-color="#f8ffa0" stop-opacity=".42"/>
+          <stop offset=".3"   stop-color="#eeff6b" stop-opacity=".2"/>
+          <stop offset=".5"   stop-color="#eeff6b" stop-opacity=".075"/>
+          <stop offset=".75"  stop-color="#eeff6b" stop-opacity=".02"/>
+          <stop offset="1"    stop-color="#eeff6b" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="core">
+          <stop offset="0"   stop-color="#ffffff" stop-opacity="1"/>
+          <stop offset=".3"  stop-color="#fffff2" stop-opacity=".75"/>
+          <stop offset=".7"  stop-color="#f4ff86" stop-opacity=".12"/>
+          <stop offset="1"   stop-color="#f4ff86" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="flare-h">
+          <stop offset="0"   stop-color="#ffffff" stop-opacity=".95"/>
+          <stop offset=".35" stop-color="#f4ff86" stop-opacity=".35"/>
+          <stop offset="1"   stop-color="#eeff6b" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="halo-ring">
+          <stop offset=".55" stop-color="#eeff6b" stop-opacity="0"/>
+          <stop offset=".8"  stop-color="#eeff6b" stop-opacity=".1"/>
+          <stop offset="1"   stop-color="#eeff6b" stop-opacity="0"/>
+        </radialGradient>
+
+        <!-- 바닥 홀로그램 투영대 -->
+        <linearGradient id="base-grad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#eeff6b" stop-opacity="0"/>
+          <stop offset=".5" stop-color="#f6ffa8" stop-opacity=".7"/>
+          <stop offset="1" stop-color="#eeff6b" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+
+      <!-- 바닥 투영대 -->
+      <g class="base" aria-hidden="true">
+        <ellipse cx="298" cy="806" rx="318" ry="30" fill="none" stroke="url(#base-grad)" stroke-width="1" vector-effect="non-scaling-stroke"/>
+        <ellipse cx="298" cy="806" rx="236" ry="21" fill="none" stroke="url(#base-grad)" stroke-width="1" stroke-dasharray="2 9" vector-effect="non-scaling-stroke" class="base-dash"/>
+      </g>
+
+      <!-- 나무 몸통 (아래→위 등장 마스크 적용) -->
+      <g id="tree-body" mask="url(#reveal)">
+        <!-- 검정 속 -->
+        <use href="#tree-outline" fill="#000" fill-rule="evenodd"/>
+        <use href="#tree-outline" fill="url(#scanlines)" fill-rule="evenodd"/>
+
+        <!-- 나무결 · 옹이 -->
+        <g clip-path="url(#tree-clip)" class="bark">
+          <path id="tree-bark" fill="none" stroke="#f4ff86" stroke-width=".7" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" opacity=".42"/>
+          <path id="tree-knots" fill="none" stroke="#f4ff86" stroke-width=".8" vector-effect="non-scaling-stroke" opacity=".5"/>
+          <rect class="sweep" x="-60" y="-120" width="760" height="120" fill="url(#sweep)"/>
+        </g>
+
+        <!-- 윤곽선: 바깥은 네온 연노랑, 선 중심으로 갈수록 흰색 -->
+        <use href="#tree-outline" fill="none" stroke="#eeff6b" stroke-width="9" opacity=".5" filter="url(#glow-wide)" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        <use href="#tree-outline" fill="none" stroke="#eeff6b" stroke-width="3.4" opacity=".95" filter="url(#glow-soft)" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        <use href="#tree-outline" fill="none" stroke="#f4ff86" stroke-width="3.4" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        <use href="#tree-outline" fill="none" stroke="#fbffc8" stroke-width="2.2" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        <use href="#tree-outline" fill="none" stroke="#ffffff" stroke-width="1.1" fill-rule="evenodd" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+      </g>
+
+      <!-- 등장 중 훑고 올라가는 스캔선 -->
+      <rect id="reveal-front" x="-200" y="860" width="1100" height="2" fill="url(#front-grad)" opacity="0"/>
+
+      <!-- 기둥 위 라틴어 (세로) -->
+      <g id="trunk-label" class="trunk-label" aria-hidden="true">
+        <text id="trunk-text" text-anchor="middle" filter="url(#glow-text)">ARBOR SEPHIROTH</text>
+      </g>
+
+      <!-- 열매 -->
+      <g id="fruit-group" class="fruit-group">
+        <g id="stem" class="stem"></g>
+        <g id="fruit" class="fruit" role="button" tabindex="0" aria-label="세피로트의 열매">
+          <!-- 빛 번짐: 고리보다 훨씬 크다 -->
+          <g class="bloom" aria-hidden="true">
+            <circle r="160" fill="url(#bloom)"/>
+          </g>
+          <g class="flares" aria-hidden="true">
+            <ellipse rx="170" ry="2.4" fill="url(#flare-h)"/>
+            <ellipse rx="2" ry="84" fill="url(#flare-h)" opacity=".75"/>
+            <ellipse rx="64" ry="1.4" fill="url(#flare-h)" opacity=".7" transform="rotate(32)"/>
+            <ellipse rx="64" ry="1.4" fill="url(#flare-h)" opacity=".7" transform="rotate(-32)"/>
+          </g>
+          <!-- 속이 빈 고리: 안쪽은 빛이 차 있고, 그 빛은 고리 밖으로 넘친다 -->
+          <circle r="22" fill="url(#core)" class="core"/>
+          <g class="ring" fill="none" aria-hidden="true">
+            <circle r="22" stroke="#eeff6b" stroke-width="7" opacity=".5" filter="url(#glow-soft)"/>
+            <circle r="22" stroke="#eeff6b" stroke-width="4"/>
+            <circle r="22" stroke="#f8ffb4" stroke-width="2.6"/>
+            <circle r="22" stroke="#ffffff" stroke-width="1.3"/>
+          </g>
+          <g class="orbit" aria-hidden="true">
+            <circle r="34" fill="none" stroke="#f4ff86" stroke-width="1" stroke-dasharray="1.5 7" vector-effect="non-scaling-stroke" opacity=".8"/>
+          </g>
+          <g class="dust" aria-hidden="true"></g>
+          <circle class="hit" r="62" fill="transparent"/>
+        </g>
+      </g>
+    </svg>
+  </main>
+
+  <!-- 화면 전환 오버레이 (테크니컬 슬랫 + 아이콘) -->
+  <div class="transition" id="transition" aria-hidden="true">
+    <div class="slats" id="slats"></div>
+    <div class="t-icon">
+      <svg viewBox="-40 -40 80 80" width="80" height="80">
+        <circle r="17" fill="none" stroke="#eeff6b" stroke-width="3" opacity=".5" filter="url(#glow-soft)"/>
+        <circle r="17" fill="none" stroke="#f8ffb4" stroke-width="2"/>
+        <circle r="17" fill="none" stroke="#fff" stroke-width=".9"/>
+        <circle class="t-spin" r="30" fill="none" stroke="#f4ff86" stroke-width="1.4" stroke-dasharray="14 8 2 8"/>
+        <circle r="5" fill="#fff"/>
+      </svg>
+    </div>
+    <div class="t-line"></div>
+  </div>
+
+  <script src="assets/tree-data.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
