@@ -201,7 +201,7 @@
   // 그래서 첫 입력 때 서서히 커지며 시작하고, 오른쪽 위 버튼으로 끄고 켤 수 있다. (선택은 기억됨)
   const Bgm = (() => {
     const SRC = "assets/audio/bgm.mp3";
-    const VOL = 0.55;
+    const VOL = 0.2;                           // 밑바탕에 깔리는 정도 (효과음 0.8 대비 약 -12dB). 더 크게/작게는 이 값만 바꾼다
     const KEY = "rasyancut.bgm";
     const el = new Audio(SRC);
     el.loop = true;
@@ -251,7 +251,7 @@
         await el.play();
         playing = true;
         render();
-        ramp(VOL, 3200);
+        ramp(VOL, 5500);                      // 아주 천천히 스며들듯 시작
       } catch (_) { /* 사용자 입력이 아직 없으면 실패 → 다음 입력 때 다시 시도 */ }
       finally { starting = false; }
     };
@@ -282,7 +282,7 @@
     /** 효과음이 울릴 때 잠깐 낮췄다가 되돌린다 */
     const duck = () => {
       if (!playing || !want) return;
-      ramp(VOL * 0.35, 120).then(() => setTimeout(() => { if (want) ramp(VOL, 1500); }, 450));
+      ramp(VOL * 0.5, 160).then(() => setTimeout(() => { if (want) ramp(VOL, 2200); }, 450));
     };
 
     render();                                  // 시작은 첫 사용자 입력에서 (그 전에는 브라우저가 막는다)
