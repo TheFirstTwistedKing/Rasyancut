@@ -153,6 +153,63 @@
     const target = fruit.dataset.target;
     Transition.play(() => { if (target) window.location.href = target; });
   };
+  // 부드러운 스프링: 올리면 천천히 부풀며 살짝 튀어 오르고, 떼면 출렁이며 제자리로
+  const bounceG = fruit.querySelector(".bounce");
+  const ripples = fruit.querySelector(".ripples");
+  const sp = { s: 1, v: 0, y: 0, vy: 0, ts: 1, ty: 0, raf: 0, last: 0 };
+  const K = 64, C = 8.6;                       // 약한 강성·적당한 감쇠 → 느리고 부드러운 출렁임
+
+  const render = () => {
+    bounceG.style.transform = `translateY(${sp.y.toFixed(3)}px) scale(${sp.s.toFixed(4)})`;
+  };
+  const step = (now) => {
+    const dt = Math.min(0.032, (now - sp.last) / 1000 || 0.016);
+    sp.last = now;
+    sp.v += (-K * (sp.s - sp.ts) - C * sp.v) * dt;
+    sp.s += sp.v * dt;
+    sp.vy += (-K * (sp.y - sp.ty) - C * sp.vy) * dt;
+    sp.y += sp.vy * dt;
+    render();
+    const rest = Math.abs(sp.s - sp.ts) < 0.0004 && Math.abs(sp.v) < 0.004 &&
+                 Math.abs(sp.y - sp.ty) < 0.01 && Math.abs(sp.vy) < 0.05;
+    if (rest) { sp.s = sp.ts; sp.y = sp.ty; render(); sp.raf = 0; }
+    else sp.raf = requestAnimationFrame(step);
+  };
+  const kick = (ts, ty, vs, vy) => {
+    sp.ts = ts; sp.ty = ty; sp.v += vs; sp.vy += vy;
+    if (reduced) { sp.s = ts; sp.y = ty; render(); return; }
+    if (!sp.raf) { sp.last = performance.now(); sp.raf = requestAnimationFrame(step); }
+  };
+
+  // 파동: 커서가 올라가 있는 동안 일정 간격으로 퍼져 나감 (끝난 파동은 스스로 사라짐)
+  const NS_ = "http://www.w3.org/2000/svg";
+  const spawnRipple = () => {
+    if (reduced) return;
+    ["soft", ""].forEach((cls) => {
+      const c = document.createElementNS(NS_, "circle");
+      c.setAttribute("r", 22);
+      c.setAttribute("class", cls ? "ripple " + cls : "ripple");
+      c.addEventListener("animationend", () => c.remove());
+      ripples.appendChild(c);
+    });
+  };
+  let rippleTimer = 0;
+  const startWaves = () => {
+    if (rippleTimer) return;
+    spawnRipple();
+    rippleTimer = setInterval(spawnRipple, 900);
+  };
+  const stopWaves = () => { clearInterval(rippleTimer); rippleTimer = 0; };
+
+  const hoverIn = () => { kick(1.14, -2, 0.35, -26); startWaves(); };
+  const hoverOut = () => { kick(1, 0, -0.1, 8); stopWaves(); };
+  fruit.addEventListener("pointerenter", hoverIn);
+  fruit.addEventListener("pointerleave", hoverOut);
+  fruit.addEventListener("focus", hoverIn);
+  fruit.addEventListener("blur", hoverOut);
+  fruit.addEventListener("pointerdown", () => { kick(0.96, 1, -0.3, 10); spawnRipple(); });
+  fruit.addEventListener("pointerup", () => kick(1.14, -2, 0.2, -14));
+
   fruit.addEventListener("click", activate);
   fruit.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); }
