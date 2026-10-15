@@ -693,11 +693,12 @@
     const ex = document.getElementById("map-exit");
     if (ex) ex.focus({ preventScroll: true });
   });
-  // 맵에서 나오기: 기존 전환 연출(슬랫 + 아이콘) 후 열매 설명창으로 복귀
+  // 맵에서 나오기: 입장할 때와 같은 로딩 화면(같은 열매의 이미지)이 뜨고, 그 아래에서 맵이 닫혀 열매 설명창으로 복귀
   const mapExit = document.getElementById("map-exit");
-  if (mapExit) mapExit.addEventListener("click", () => {
+  if (mapExit) mapExit.addEventListener("click", async () => {
+    if (!MapView || !Loading || Loading.isBusy()) return;
     Bgm.setTrack("main");                         // 나오면 원래 음악으로
-    Transition.play(() => { MapView.hide(); });
-    setTimeout(() => el.enter.focus({ preventScroll: true }), 1800);
+    await Loading.run(async () => ({ ready: () => MapView.hide() }), { file: FRUITS[CURRENT].loading });
+    el.enter.focus({ preventScroll: true });
   });
 })();
