@@ -179,7 +179,7 @@
     ["pointerdown", "keydown", "touchstart"].forEach((ev) =>
       window.addEventListener(ev, unlock, { passive: true }));
 
-    const DEFAULT_VOL = 0.3;                  // 효과음 기본 볼륨 (0~1). 더 작게/크게는 이 값만 바꾼다
+    const DEFAULT_VOL = 0.17;                 // 효과음 기본 볼륨 (0~1). 더 작게/크게는 이 값만 바꾼다
     const play = (volume = DEFAULT_VOL) => {
       if (ctx && buf && ctx.state === "running") {
         const src = ctx.createBufferSource();
@@ -302,8 +302,8 @@
   const FRUITS = {
     "01": {
       kicker: "FRUIT · 01",
-      title: "열매 01",
-      desc: "이 열매에 담긴 이야기의 설명이 들어갈 자리입니다. 열매마다 짧은 소개 글과 분위기를 적어 두면, 열매를 눌렀을 때 이 창에 나타납니다.",
+      title: "라시안컷 : 뱅가드",
+      desc: "라시안컷 : 뱅가드. 솔스티스가 관리하고 있는 성소다.",
       target: null,
     },
   };
