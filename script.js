@@ -176,7 +176,8 @@
     ["pointerdown", "keydown", "touchstart"].forEach((ev) =>
       window.addEventListener(ev, unlock, { passive: true }));
 
-    const play = (volume = 0.8) => {
+    const DEFAULT_VOL = 0.3;                  // 효과음 기본 볼륨 (0~1). 더 작게/크게는 이 값만 바꾼다
+    const play = (volume = DEFAULT_VOL) => {
       if (ctx && buf && ctx.state === "running") {
         const src = ctx.createBufferSource();
         const gain = ctx.createGain();
@@ -454,7 +455,7 @@
     if (camMode !== "idle" || busyCam) return;
     busyCam = true;
     camMode = "zooming";
-    Sfx.play(0.8);                                // 유물이 깨어나는 소리
+    Sfx.play();                                   // 유물이 깨어나는 소리
     Bgm.duck();                                   // 배경음악을 잠깐 낮춰 효과음이 돋보이게
     stage.classList.add("zoomed", "zooming");
     startWaves();
