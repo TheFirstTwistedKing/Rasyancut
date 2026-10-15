@@ -458,6 +458,8 @@ void main(){
   let dragging = false, dragVel = { x: 0, y: 0 }, lastMove = 0, pinchD = 0;
   let boostHeld = false;
   let burn = null;                                   // 불타 재가 되는 연출 진행 상태
+  let portal = null;                                 // 차원의 틈으로 들어가는 연출 진행 상태
+  let tap = null;                                    // 눌렀다 뗀(드래그 아닌) 입력 판정용
 
   const el = {};
   const getEls = () => {
@@ -473,6 +475,7 @@ void main(){
     el.boost = document.getElementById("boost");
     el.burn = document.getElementById("burn-canvas");
     el.fire = document.getElementById("fire-canvas");
+    el.portal = document.getElementById("portal-canvas");
     el.toast = document.getElementById("map-toast");
   };
 
@@ -495,17 +498,21 @@ void main(){
   function bindInput() {
     const c = el.canvas;
     c.addEventListener("pointerdown", (e) => {
-      if (burn) return;
+      if (burn || portal) return;
       c.setPointerCapture(e.pointerId);
+      const first = pointers.size === 0;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      tap = first ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 } : null;
       tween = null;
       if (pointers.size === 1) { dragging = true; dragVel = { x: 0, y: 0 }; vel.x = vel.y = 0; lastMove = performance.now(); }
       if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinchD = Math.hypot(a.x - b.x, a.y - b.y); dragging = false; }
       c.classList.add("grabbing");
     });
     c.addEventListener("pointermove", (e) => {
-      if (burn) return;
+      if (burn || portal) return;
+      if (!pointers.size) c.style.cursor = hitSpecial(e.clientX, e.clientY) ? "pointer" : "";      // 차원의 틈 위에서는 손가락 커서
       const p = pointers.get(e.pointerId); if (!p) return;
+      if (tap && tap.id === e.pointerId) tap.moved = Math.max(tap.moved, Math.hypot(e.clientX - tap.x, e.clientY - tap.y));
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       p.x = e.clientX; p.y = e.clientY;
       if (pointers.size === 2) {
@@ -521,8 +528,11 @@ void main(){
       dragVel.x = dragVel.x * 0.6 + vx * 0.4; dragVel.y = dragVel.y * 0.6 + vy * 0.4;
     });
     const end = (e) => {
+      const wasTap = !!tap && tap.id === e.pointerId && e.type === "pointerup" && tap.moved < 10 && performance.now() - tap.t < 650;
+      tap = null;
       pointers.delete(e.pointerId);
       if (pointers.size === 0) {
+        if (wasTap && !burn && !portal) { const sp = hitSpecial(e.clientX, e.clientY); if (sp) { startPortal(sp, performance.now()); } }
         c.classList.remove("grabbing");
         if (dragging) {
           const idle = performance.now() - lastMove;
@@ -532,10 +542,10 @@ void main(){
       } else if (pointers.size === 1) { dragging = true; dragVel = { x: 0, y: 0 }; lastMove = performance.now(); pinchD = 0; }
     };
     c.addEventListener("pointerup", end); c.addEventListener("pointercancel", end);
-    c.addEventListener("wheel", (e) => { e.preventDefault(); if (burn) return; zoomAt(Math.exp(-e.deltaY * 0.0014), e.clientX, e.clientY); }, { passive: false });
+    c.addEventListener("wheel", (e) => { e.preventDefault(); if (burn || portal) return; zoomAt(Math.exp(-e.deltaY * 0.0014), e.clientX, e.clientY); }, { passive: false });
 
     window.addEventListener("keydown", (e) => {
-      if (!open || burn) return;
+      if (!open || burn || portal) return;
       const k = e.key.toLowerCase();
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(k)) { keys.add(k); tween = null; e.preventDefault(); }
       if (k === "shift") keys.add("shift");
@@ -555,14 +565,14 @@ void main(){
       stick.x = dx / R; stick.y = dy / R;
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
     };
-    s.addEventListener("pointerdown", (e) => { if (burn) return; s.setPointerCapture(e.pointerId); stick.id = e.pointerId; tween = null; upd(e); e.stopPropagation(); });
+    s.addEventListener("pointerdown", (e) => { if (burn || portal) return; s.setPointerCapture(e.pointerId); stick.id = e.pointerId; tween = null; upd(e); e.stopPropagation(); });
     s.addEventListener("pointermove", (e) => { if (stick.id === e.pointerId) upd(e); });
     const sEnd = (e) => { if (stick.id !== e.pointerId) return; stick.id = null; stick.x = stick.y = 0; knob.style.transform = ""; };
     s.addEventListener("pointerup", sEnd); s.addEventListener("pointercancel", sEnd);
 
     // 가속 버튼(터치): 누르고 있는 동안 3배 속도
     const bEnd = () => { boostHeld = false; el.boost.classList.remove("held"); };
-    el.boost.addEventListener("pointerdown", (e) => { if (burn) return; e.stopPropagation(); el.boost.setPointerCapture(e.pointerId); boostHeld = true; el.boost.classList.add("held"); });
+    el.boost.addEventListener("pointerdown", (e) => { if (burn || portal) return; e.stopPropagation(); el.boost.setPointerCapture(e.pointerId); boostHeld = true; el.boost.classList.add("held"); });
     el.boost.addEventListener("pointerup", bEnd); el.boost.addEventListener("pointercancel", bEnd);
 
     // 버튼
@@ -573,7 +583,7 @@ void main(){
     // 미니맵: 누르거나 끌면 그 위치로
     const mm = el.mini;
     const jump = (e, smooth) => {
-      if (burn) return;
+      if (burn || portal) return;
       const r = mm.getBoundingClientRect();
       let wx = (clamp((e.clientX - r.left) / r.width, 0, 1) - 0.5) * WORLD, wy = (clamp((e.clientY - r.top) / r.height, 0, 1) - 0.5) * WORLD;
       const dm = Math.hypot(wx, wy); if (dm > R_MAP * 0.985) { wx *= R_MAP * 0.985 / dm; wy *= R_MAP * 0.985 / dm; }   // 경계 밖으로는 이동하지 않는다
@@ -592,12 +602,13 @@ void main(){
   }
 
   function update(dt, now) {
+    if (portal) tween = null;
     if (tween) {
       const k = clamp((now - tween.t0) / tween.ms, 0, 1), e = 1 - Math.pow(1 - k, 3);
       cam.x = tween.fx + (tween.tx - tween.fx) * e; cam.y = tween.fy + (tween.ty - tween.fy) * e;
       cam.z = Math.exp(Math.log(tween.fz) + (Math.log(tween.tz) - Math.log(tween.fz)) * e);
       if (k >= 1) tween = null;
-    } else if (!dragging && !burn) {
+    } else if (!dragging && !burn && !portal) {
       let ix = stick.x, iy = stick.y;
       if (keys.has("arrowleft") || keys.has("a")) ix -= 1;
       if (keys.has("arrowright") || keys.has("d")) ix += 1;
@@ -615,7 +626,7 @@ void main(){
       cam.x += vel.x * dt; cam.y += vel.y * dt;
     }
     // 맵 밖으로 나가려 하면 불타 재가 된다
-    if (!burn && Math.hypot(cam.x - CX, cam.y - CY) >= R_MAP) startBurn(now);
+    if (!burn && !portal && Math.hypot(cam.x - CX, cam.y - CY) >= R_MAP) startBurn(now);
   }
 
   // ───────────────────────── 그리기 ─────────────────────────
@@ -896,6 +907,10 @@ void main(){
     ctx.textAlign = "center"; ctx.shadowColor = NEON; ctx.shadowBlur = 16; ctx.fillStyle = NEON_PALE;
     ctx.font = `700 ${fs}px "Noto Serif KR", serif`;
     ctx.fillText(s.name, 0, sp.hh * k + fs * 1.5);
+    ctx.shadowBlur = 8; ctx.globalAlpha = 0.7; ctx.fillStyle = NEON_SOFT;
+    ctx.font = `300 ${fs * 0.55}px "Noto Sans KR", sans-serif`;
+    ctx.fillText("눌러서 들어가기", 0, sp.hh * k + fs * 2.45);
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 
@@ -1023,6 +1038,7 @@ void main(){
     if (!SKIP.has('hud')) { drawAxisLabels(); drawEdgeMarkers(t); }
     if (!SKIP.has('mini')) drawMini(t);
     updateFire(t);
+    updatePortal(now);
     updateBurn(now, Math.hypot(cam.x - CX, cam.y - CY));
     hudT += dt;
     if (hudT > 0.12) {
@@ -1166,6 +1182,260 @@ void main(){
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
+
+  // ───────────────────────── 차원의 틈으로 들어가기: 빨려 들어가 포탈을 타고 → 화면이 지지직거리다 → 꺼지고 → 홈페이지로 ─────────────────────────
+  const PORTAL_URL = "https://thefirsttwistedking.github.io/Rasyancut-homepage/";
+  const PT = { fly: 2700, tunnel: 2900, off: 1200, hold: 800 };      // ms: 빨려 듦 / 포탈 이동(글리치 심화) / 화면 꺼짐 / 검은 화면
+  const PORTAL_FS = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec2 uRes, uCenter;
+uniform float uT, uTravel, uEnter, uGlitch, uOff, uFlight;
+float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ v += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return v; }
+float fbm3(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++){ v += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return v; }
+float fbm2(vec2 p){ return 0.667 * vnoise(p) + 0.333 * vnoise(p * 2.03 + vec2(1.7, 9.2)); }
+
+// 소용돌이 속(웜홀): 연노랑 가스 필라멘트가 나선으로 휘감기고, 검은 팔이 빛을 삼키며, 끝의 하얀 빛으로 쏟아져 들어간다
+vec3 tunnel(vec2 uv){
+  float asp = uRes.x / uRes.y;
+  vec2 p = (uv - uCenter) * vec2(asp, 1.0) * 2.0;
+  float r = length(p) + 1e-3, a = atan(p.y, p.x);
+  float depth = 0.42 / (r + 0.05);                 // 중심에 가까울수록 멀리
+  float zz = depth + uTravel;                      // 앞으로 나아가는 거리
+  float tw = a + depth * 0.85 + uT * 0.45;         // 깊이에 따라 비틀리는 나선
+  vec2 c = vec2(cos(tw), sin(tw));                 // 각도 이음매 없이 노이즈를 읽는다
+  float n1 = fbm(c * 2.1 + vec2(zz * 0.5, zz * 0.18));
+  float n2 = fbm3(c * 4.3 - vec2(zz * 0.85, -zz * 0.35) + 7.3);
+  float fil = pow(smoothstep(0.30, 0.82, n1 * 0.62 + n2 * 0.52), 1.5);
+  float arm = 0.35 + 0.65 * smoothstep(0.25, 0.75, fbm2(c * 1.3 + vec2(zz * 0.3, 3.0)));
+  float seg = 0.5 + 0.5 * sin(zz * 4.5 + n1 * 3.0);
+  float band = smoothstep(0.85, 1.0, seg) * 0.4;   // 터널 이음매 띠
+  float cells = 72.0, ang = (a / 6.2832 + 0.5) * cells;
+  float h = hash(vec2(floor(ang), 3.1));
+  float sz = fract(zz * (0.25 + h * 0.5) + h * 7.0);
+  float streak = step(0.84, h) * smoothstep(0.1, 0.0, abs(fract(ang) - 0.5)) * smoothstep(0.0, 0.05, sz) * smoothstep(0.30, 0.05, sz) * smoothstep(0.08, 0.5, r);
+  float far = smoothstep(1.3, 0.1, r);
+  vec3 col = vec3(0.93, 1.0, 0.42) * fil * arm * (0.3 + 1.3 * far);
+  col += vec3(1.0, 0.96, 0.7) * band * far;
+  col += vec3(1.0, 0.97, 0.8) * streak * (0.6 + 1.2 * uFlight);
+  col += vec3(1.0, 0.98, 0.88) * (exp(-r * r * 6.0) * 1.6 + exp(-r * 2.2) * 0.35);
+  col *= smoothstep(1.9, 0.4, r) * 0.5 + 0.5;
+  return col;
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes;
+  float asp = uRes.x / uRes.y;
+  float ko = uOff, g = uGlitch;
+  // 화면 꺼짐(브라운관): 세로로 찌그러져 가는 선이 되었다가 점으로 줄며 사라진다
+  float hh = mix(1.0, 0.004, smoothstep(0.0, 0.55, ko));
+  float ww = mix(1.0, 0.0, smoothstep(0.55, 1.0, ko));
+  vec2 q = vec2((uv.x - 0.5) / max(ww, 0.0005) + 0.5, (uv.y - 0.5) / hh + 0.5);
+  float inside = step(0.0, q.x) * step(q.x, 1.0) * step(0.0, q.y) * step(q.y, 1.0) * step(0.0005, ww);
+  vec3 col = vec3(0.0); float alpha = 1.0;
+  if (inside > 0.5) {
+    float rt = floor(uT * mix(5.0, 26.0, g));
+    float rows = mix(10.0, 70.0, g), row = floor(q.y * rows);
+    float rn = hash(vec2(row, rt));
+    float shift = step(1.0 - (0.06 + 0.5 * g), rn) * (hash(vec2(row, rt + 9.0)) - 0.5) * 0.3 * g * step(0.02, g);   // 가로줄이 옆으로 밀림
+    float roll = g * g * step(0.75, hash(vec2(rt, 1.0))) * 0.2 * fract(uT * 1.3);                                  // 화면이 위아래로 말림
+    vec2 u2 = vec2(q.x + shift, fract(q.y + roll));
+    float ab = 0.003 + 0.035 * g * hash(vec2(rt, 2.0));                                                           // RGB 어긋남
+    if (g > 0.02) { vec3 ca = tunnel(u2 + vec2(ab, 0.0)), cb = tunnel(u2 - vec2(ab, 0.0)); col = vec3(ca.r, 0.5 * (ca.g + cb.g), cb.b); } else col = tunnel(u2);   // 두 번만 읽어 RGB 를 어긋나게
+    col *= 0.88 + 0.12 * sin(uv.y * uRes.y * 1.5);                                                                // 주사선
+    float nz = hash(gl_FragCoord.xy + fract(uT) * 100.0);
+    col = mix(col, vec3(nz), g * g * 0.30);                                                                       // 지지직 노이즈
+    col += step(1.0 - 0.04 * g, hash(vec2(row, rt + 3.0))) * vec3(0.6) * (0.4 + nz);                              // 하얀 노이즈 띠
+    col *= 1.0 + (hash(vec2(rt, 5.0)) - 0.5) * 0.5 * g;                                                           // 밝기 떨림
+    col *= mix(1.0, 0.08, step(1.0 - 0.16 * g * g, hash(vec2(rt, 7.0))));                                         // 신호가 잠깐 끊김
+    col *= 1.0 + 2.2 * smoothstep(0.05, 0.55, ko);                                                                // 꺼질 때 번쩍이는 인광
+    // 소용돌이에서 퍼져 나가는 문: 처음에는 소용돌이 주변부터 화면을 덮는다
+    vec2 pc = (uv - uCenter) * vec2(asp, 1.0) * 2.0; float rr = length(pc);
+    float R = uEnter * 2.9;
+    alpha = ko > 0.0 ? 1.0 : 1.0 - smoothstep(R - 0.3, R, rr);
+    float ring = exp(-pow((rr - R) / 0.08, 2.0)) * (1.0 - step(0.999, uEnter));
+    col = col * alpha + vec3(1.0, 0.96, 0.7) * ring * 1.3;
+    alpha = max(alpha, ring);
+  } else {
+    // 꺼지는 선·점의 빛
+    float line = exp(-abs(uv.y - 0.5) / 0.012) * exp(-pow(abs(uv.x - 0.5) / (ww * 0.5 + 0.003), 4.0));
+    col = vec3(1.0, 0.98, 0.9) * line * smoothstep(0.1, 0.5, ko) * (1.0 - smoothstep(0.9, 1.0, ko)) * 1.6;
+  }
+  vec3 hi = max(col - 0.85, 0.0); col = min(col, 0.85) + 0.15 * (1.0 - exp(-hi * 5.0));
+  col += (hash(gl_FragCoord.xy + 7.7) - 0.5) / 255.0;
+  gl_FragColor = vec4(min(col, vec3(1.0)), clamp(alpha, 0.0, 1.0));
+}`;
+  let portalGL = null, portal2d = null, portalQ = 0.7, portalEma = 16;
+  function initPortal() {
+    const c = el.portal;
+    try {
+      const gl = c.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: false });
+      if (!gl) throw new Error("no webgl");
+      const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+      const prog = gl.createProgram();
+      gl.attachShader(prog, sh(gl.VERTEX_SHADER, VORTEX_VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, PORTAL_FS));
+      gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      gl.useProgram(prog);
+      const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(prog, "aPos"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      const U = {}; ["uRes", "uCenter", "uT", "uTravel", "uEnter", "uGlitch", "uOff", "uFlight"].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
+      portalGL = { gl, U };
+    } catch (e) { portalGL = null; console.warn("포탈 연출(WebGL) 사용 불가 → 단순한 연출로 대체:", e.message); }
+  }
+
+  /** 쌍둥이의 틈 소용돌이 중심의 월드 좌표 (틈이 약간 기울어져 있다) */
+  function vortexWorld(s) {
+    const sp = rifts[12 + s.idx] || rifts[12]; if (!sp) return null;
+    const S = sp.S, k = s.scale, u = (sp.vc[0][0] - S / 2) * k, v = (sp.vc[0][1] - S / 2) * k;
+    return { x: s.x + u * Math.cos(s.rot) - v * Math.sin(s.rot), y: s.y + u * Math.sin(s.rot) + v * Math.cos(s.rot), r: sp.vr * k };
+  }
+  /** 화면 좌표가 쌍둥이의 틈 소용돌이 위인가 (너무 작게 보여도 누를 수 있도록 최소 크기 보장) */
+  function hitSpecial(clientX, clientY) {
+    if (!open || !rifts.length) return null;
+    const rc = el.canvas.getBoundingClientRect();
+    const wx = cam.x + (clientX - rc.left - cw / 2) / cam.z, wy = cam.y + (clientY - rc.top - ch / 2) / cam.z;
+    for (const s of specials) {
+      const vw = vortexWorld(s); if (!vw) continue;
+      if (Math.hypot(wx - vw.x, wy - vw.y) <= Math.max(vw.r * 1.25, 36 / cam.z)) return s;
+    }
+    return null;
+  }
+
+  // 효과음: 빨려 드는 바람 → 진입의 쿵 → 점점 거칠어지는 지지직 → 전원이 꺼지는 소리 (WebAudio 로 그 자리에서 합성)
+  function portalSound() {
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    let a; try { a = new AC(); } catch (_) { return; }
+    if (a.resume) a.resume();
+    const t0 = a.currentTime + 0.03, tun = (PT.fly + PT.tunnel) / 1000, end = tun + PT.off / 1000;
+    const master = a.createGain(); master.gain.value = 0.42; master.connect(a.destination);
+    const nb = a.createBuffer(1, a.sampleRate * 2, a.sampleRate), d = nb.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const noise = () => { const s = a.createBufferSource(); s.buffer = nb; s.loop = true; return s; };
+    // 1) 포탈이 빨아들이는 바람: 대역통과 노이즈가 점점 높아지며 커진다
+    { const s = noise(), f = a.createBiquadFilter(), g = a.createGain();
+      f.type = "bandpass"; f.Q.value = 1.1; f.frequency.setValueAtTime(160, t0); f.frequency.exponentialRampToValueAtTime(5200, t0 + tun);
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.6, t0 + tun * 0.8); g.gain.linearRampToValueAtTime(0.0001, t0 + tun + 0.04);
+      s.connect(f).connect(g).connect(master); s.start(t0); s.stop(t0 + tun + 0.1); }
+    // 2) 저음 드론: 틈 속의 거대한 울림, 점점 올라간다
+    for (const [type, f0, f1, vol] of [["sawtooth", 52, 118, 0.16], ["sine", 40, 78, 0.3]]) {
+      const o = a.createOscillator(), lp = a.createBiquadFilter(), g = a.createGain();
+      o.type = type; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f1, t0 + tun);
+      lp.type = "lowpass"; lp.frequency.setValueAtTime(240, t0); lp.frequency.exponentialRampToValueAtTime(1800, t0 + tun);
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 1.4); g.gain.setValueAtTime(vol, t0 + tun - 0.1); g.gain.linearRampToValueAtTime(0.0001, t0 + tun + 0.05);
+      o.connect(lp).connect(g).connect(master); o.start(t0); o.stop(t0 + tun + 0.1);
+    }
+    // 3) 틈에 빨려 드는 순간의 쿵
+    { const o = a.createOscillator(), g = a.createGain(), tt = t0 + PT.fly * 0.62 / 1000;
+      o.type = "sine"; o.frequency.setValueAtTime(96, tt); o.frequency.exponentialRampToValueAtTime(34, tt + 0.7);
+      g.gain.setValueAtTime(0.0001, tt); g.gain.exponentialRampToValueAtTime(0.9, tt + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.85);
+      o.connect(g).connect(master); o.start(tt); o.stop(tt + 0.9); }
+    // 4) 지지직: 점점 잦고 거칠어지는 짧은 잡음·전기 튀는 소리
+    for (let tt = 1.8; tt < tun; ) {
+      const prog = (tt - 1.8) / (tun - 1.8), s = noise(), f = a.createBiquadFilter(), g = a.createGain(), dur = 0.025 + Math.random() * (0.03 + 0.07 * prog);
+      f.type = Math.random() < 0.5 ? "highpass" : "bandpass"; f.frequency.value = 800 + Math.random() * 5500; f.Q.value = 2 + Math.random() * 6;
+      g.gain.setValueAtTime(0.0001, t0 + tt); g.gain.exponentialRampToValueAtTime(0.1 + 0.55 * prog, t0 + tt + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t0 + tt + dur);
+      s.connect(f).connect(g).connect(master); s.start(t0 + tt, Math.random()); s.stop(t0 + tt + dur + 0.02);
+      if (Math.random() < 0.35 * prog) {                     // 가끔 거친 전자음 한 번
+        const o = a.createOscillator(), og = a.createGain(); o.type = "square"; o.frequency.value = 90 + Math.random() * 600;
+        og.gain.setValueAtTime(0.0001, t0 + tt); og.gain.exponentialRampToValueAtTime(0.05 + 0.1 * prog, t0 + tt + 0.003); og.gain.exponentialRampToValueAtTime(0.0001, t0 + tt + dur * 0.8);
+        o.connect(og).connect(master); o.start(t0 + tt); o.stop(t0 + tt + dur);
+      }
+      tt += Math.max(0.035, (0.26 - 0.22 * prog) * (0.4 + Math.random()));
+    }
+    // 5) 전원이 꺼지는 소리: 높은 음이 뚝 떨어지고, 쿵, 마지막 틱
+    { const o = a.createOscillator(), g = a.createGain();
+      o.type = "sine"; o.frequency.setValueAtTime(1700, t0 + tun); o.frequency.exponentialRampToValueAtTime(34, t0 + tun + 0.5);
+      g.gain.setValueAtTime(0.0001, t0 + tun); g.gain.exponentialRampToValueAtTime(0.5, t0 + tun + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + tun + 0.55);
+      o.connect(g).connect(master); o.start(t0 + tun); o.stop(t0 + tun + 0.6);
+      const s = noise(), f = a.createBiquadFilter(), ng = a.createGain();
+      f.type = "lowpass"; f.frequency.value = 1400;
+      ng.gain.setValueAtTime(0.0001, t0 + tun); ng.gain.exponentialRampToValueAtTime(0.7, t0 + tun + 0.01); ng.gain.exponentialRampToValueAtTime(0.0001, t0 + tun + 0.2);
+      s.connect(f).connect(ng).connect(master); s.start(t0 + tun); s.stop(t0 + tun + 0.25);
+      const o2 = a.createOscillator(), g2 = a.createGain(); o2.type = "triangle"; o2.frequency.value = 2600;
+      g2.gain.setValueAtTime(0.0001, t0 + end - 0.05); g2.gain.exponentialRampToValueAtTime(0.25, t0 + end - 0.045); g2.gain.exponentialRampToValueAtTime(0.0001, t0 + end);
+      o2.connect(g2).connect(master); o2.start(t0 + end - 0.05); o2.stop(t0 + end + 0.02); }
+    setTimeout(() => { try { a.close(); } catch (_) { /* 무시 */ } }, (end + PT.hold / 1000 + 1.5) * 1000);
+  }
+
+  function startPortal(s, now) {
+    if (portal || burn || !open) return;
+    const vw = vortexWorld(s); if (!vw) return;
+    const z1 = clamp(2.2 * Math.max(cw, ch) / (2 * vw.r), 0.3, 6);               // 소용돌이가 화면을 가득 채우고도 넘치는 배율
+    portal = { t0: now, from: { x: cam.x, y: cam.y, z: cam.z }, tgt: vw, z1, travel: 0, last: now, done: false };
+    vel.x = vel.y = 0; tween = null; keys.clear(); stick.x = stick.y = 0; dragging = false; pointers.clear(); boostHeld = false; tap = null;
+    el.boost.classList.remove("held"); el.canvas.style.cursor = "";
+    el.screen.classList.add("portaling");
+    showToast("차원의 틈이 당신을 삼킵니다…");
+    setTimeout(() => el.toast.classList.remove("on"), 2600);
+    portalSound();
+    if (window.RasyancutBgm && window.RasyancutBgm.fadeOut) window.RasyancutBgm.fadeOut((PT.fly + PT.tunnel) * 0.9);
+  }
+  function endPortal() {
+    portal = null; el.portal.classList.remove("on"); el.screen.classList.remove("portaling"); el.toast.classList.remove("on");
+  }
+  const smooth01 = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+  function updatePortal(now) {
+    if (!portal) return;
+    const fixed = portal.fixed;                                   // 테스트용: 시간을 고정해 한 장면만 그린다
+    const tp = fixed != null ? fixed : now - portal.t0, dt = Math.min(0.1, (now - portal.last) / 1000); portal.last = now;
+    const T1 = PT.fly, T2 = PT.fly + PT.tunnel, T3 = T2 + PT.off, T4 = T3 + PT.hold;
+    // 카메라: 소용돌이 중심으로 빨려 들어가듯 점점 빨리 확대 (매 프레임 식으로 구하므로 흔들림이 쌓이지 않는다)
+    const sh = smooth01(1200, T2, tp) * 7;                         // 점점 커지는 화면 떨림(px)
+    let bx, by, bz;
+    if (tp < T1) {
+      const k = tp / T1, ep = 1 - Math.pow(1 - k, 3), ez = Math.pow(k, 2.1);
+      bx = portal.from.x + (portal.tgt.x - portal.from.x) * ep; by = portal.from.y + (portal.tgt.y - portal.from.y) * ep;
+      bz = Math.exp(Math.log(portal.from.z) + (Math.log(portal.z1) - Math.log(portal.from.z)) * ez);
+    } else { bx = portal.tgt.x; by = portal.tgt.y; bz = portal.z1 * Math.exp(0.3 * (tp - T1) / 1000); }
+    cam.z = bz; cam.x = bx + (Math.random() - 0.5) * sh / bz; cam.y = by + (Math.random() - 0.5) * sh / bz;
+
+    const flight = clamp(tp / T1, 0, 1);
+    const enter = tp < T1 ? smooth01(0.3, 0.92, flight) : 1;
+    const glitch = Math.pow(clamp((tp - 1800) / (T2 - 1800), 0, 1), 1.35) * 0.97;
+    const offK = tp > T2 ? clamp((tp - T2) / PT.off, 0, 1) : 0;
+    if (fixed != null) portal.travel = 7 * tp / 1000; else portal.travel += dt * (2.4 + 15 * Math.pow(smooth01(0, T2, tp), 1.4));
+    const sx = ((portal.tgt.x - cam.x) * cam.z + cw / 2) / cw, sy = 1 - ((portal.tgt.y - cam.y) * cam.z + ch / 2) / ch;
+    const on = tp > 150;
+    el.portal.classList.toggle("on", on);
+    // 프레임이 느려지면 포탈 해상도를 낮춘다 (약한 기기에서도 끊기지 않게)
+    portalEma += (dt * 1000 - portalEma) * 0.15;
+    if (portalEma > 45 && portalQ > 0.3) portalQ = Math.max(0.3, portalQ * 0.9);
+    const w = Math.max(2, Math.floor(cw * portalQ)), h = Math.max(2, Math.floor(ch * portalQ));
+    if (el.portal.width !== w || el.portal.height !== h) { el.portal.width = w; el.portal.height = h; }
+    if (on) {
+      if (portalGL) {
+        const { gl, U } = portalGL;
+        gl.viewport(0, 0, w, h);
+        gl.uniform2f(U.uRes, w, h); gl.uniform2f(U.uCenter, sx, sy);
+        gl.uniform1f(U.uT, tp / 1000); gl.uniform1f(U.uTravel, portal.travel); gl.uniform1f(U.uEnter, enter);
+        gl.uniform1f(U.uGlitch, glitch); gl.uniform1f(U.uOff, offK * offK * (3 - 2 * offK)); gl.uniform1f(U.uFlight, flight);
+        gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      } else {
+        // WebGL 없음: 소용돌이 쪽에서 번지는 밝은 빛 → 가로줄이 튀는 지지직 → 검은 화면
+        if (!portal2d) portal2d = el.portal.getContext("2d");
+        const g = portal2d; g.clearRect(0, 0, w, h);
+        const R = Math.hypot(w, h) * enter * 1.2;
+        if (R > 1) { const gr = g.createRadialGradient(sx * w, (1 - sy) * h, 0, sx * w, (1 - sy) * h, R); gr.addColorStop(0, "rgba(255,250,210,1)"); gr.addColorStop(0.5, "rgba(238,255,107,0.85)"); gr.addColorStop(1, "rgba(0,0,0,0.0)"); g.fillStyle = gr; g.fillRect(0, 0, w, h); }
+        if (tp > T1) { g.fillStyle = `rgba(0,0,0,${clamp((tp - T1) / 800, 0, 0.6)})`; g.fillRect(0, 0, w, h); }
+        for (let i = 0; i < glitch * 18; i++) { g.fillStyle = `rgba(255,255,230,${Math.random() * 0.6})`; g.fillRect(0, Math.random() * h, w, 1 + Math.random() * 5 * glitch); }
+        if (tp > T2) { g.fillStyle = `rgba(0,0,0,${clamp((tp - T2) / PT.off, 0, 1)})`; g.fillRect(0, 0, w, h); }
+      }
+    }
+    if (tp >= T4 && !portal.done && fixed == null) {
+      portal.done = true;
+      try { window.location.href = PORTAL_URL; } catch (_) { endPortal(); }
+    }
+  }
+  // 뒤로 가기로 돌아왔을 때(캐시된 화면이 까맣게 남아 있을 수 있음) 깨끗하게 다시 불러온다
+  window.addEventListener("pageshow", (e) => { if (e.persisted && portal && portal.done) location.reload(); });
 
   // ───────────────────────── 맵 밖으로 나가면: 불타오르고 → 재가 되고 → 성역 한가운데서 다시 태어난다 ─────────────────────────
   const BURN_T = { fire: 2700, ash: 1700, reborn: 2900 };      // ms
@@ -1370,6 +1640,7 @@ void main(){
     bindInput();
     initFire();
     initBurn();
+    initPortal();
   }
 
   function show() {
@@ -1387,12 +1658,12 @@ void main(){
     open = false; cancelAnimationFrame(raf);
     el.screen.classList.remove("open"); el.screen.setAttribute("inert", ""); el.screen.setAttribute("aria-hidden", "true");
     document.body.classList.remove("map-open");
-    keys.clear(); pointers.clear(); dragging = false; burn = null; el.burn.classList.remove("on"); el.fire.classList.remove("on"); el.toast.classList.remove("on"); el.screen.classList.remove("burning");
+    keys.clear(); pointers.clear(); dragging = false; burn = null; if (portal) endPortal(); el.burn.classList.remove("on"); el.fire.classList.remove("on"); el.toast.classList.remove("on"); el.screen.classList.remove("burning");
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
   window.RasyancutMap = {
-    prepare, show, hide, isOpen: () => open,
-    _debug: { SKIP, getVq: () => vq, cam, gates: () => gates, specials: () => specials, WORLD, R_MAP, MAX_SPEED, SANCT_R, flyTo, getBurn: () => burn, startBurn: () => startBurn(performance.now()) },
+    prepare, show, hide, isOpen: () => open, isLocked: () => !!portal,
+    _debug: { SKIP, getVq: () => vq, cam, gates: () => gates, specials: () => specials, WORLD, R_MAP, MAX_SPEED, SANCT_R, flyTo, getBurn: () => burn, startBurn: () => startBurn(performance.now()), startPortal: () => startPortal(specials[0], performance.now()), setPortalQ: (q) => { portalQ = q; }, freezePortal: (ms) => { if (portal) portal.fixed = ms; }, hitSpecial, vortexWorld: () => vortexWorld(specials[0]), PT },
   };
 })();

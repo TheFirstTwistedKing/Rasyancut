@@ -728,6 +728,11 @@ body.map-open .stage, body.map-open .panel { visibility: hidden; }
 /* ───────── 맵 경계: 불타는 연출 / 가속 / 원형 미니맵 ───────── */
 .fire-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
 .fire-canvas.on { display: block; }
+/* 차원의 틈으로 들어가는 연출(포탈 터널 → 지지직 → 화면 꺼짐): 안내 문구(7)보다 아래, 맵 위 */
+.portal-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 6; display: none; }
+.portal-canvas.on { display: block; }
+.map-screen.portaling .map-hud { opacity: 0 !important; pointer-events: none; transition: opacity .5s; }
+.map-screen.portaling { cursor: default; }
 .burn-canvas {
   position: absolute; inset: 0; width: 100%; height: 100%;
   pointer-events: none; z-index: 6;

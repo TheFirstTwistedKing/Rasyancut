@@ -429,7 +429,9 @@
     };
 
     render();                                  // 시작은 첫 사용자 입력에서 (그 전에는 브라우저가 막는다)
-    return { start, stop, toggle, duck, setTrack, track: () => trackName };
+    /** 음악을 서서히 줄여 끈다 (켜짐/꺼짐 설정은 건드리지 않는다. 연출용) */
+    const fadeOut = (ms) => { if (playing) return ramp(0, ms); };
+    return { start, stop, toggle, duck, setTrack, fadeOut, track: () => trackName };
   })();
   window.RasyancutBgm = Bgm;
 
@@ -709,7 +711,7 @@
   // 맵에서 나오기: 입장할 때와 같은 로딩 화면(같은 열매의 이미지)이 뜨고, 그 아래에서 맵이 닫혀 열매 설명창으로 복귀
   const mapExit = document.getElementById("map-exit");
   if (mapExit) mapExit.addEventListener("click", async () => {
-    if (!MapView || !Loading || Loading.isBusy()) return;
+    if (!MapView || !Loading || Loading.isBusy() || (MapView.isLocked && MapView.isLocked())) return;
     Bgm.setTrack("main");                         // 나오면 원래 음악으로
     await Loading.run(async () => ({ ready: () => MapView.hide() }), { file: FRUITS[CURRENT].loading });
     el.enter.focus({ preventScroll: true });
