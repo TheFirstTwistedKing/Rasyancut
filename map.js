@@ -171,7 +171,7 @@
    *  가장자리에서 떨어져 나온 얇은 파편 — 유리나 암석이 실제로 쪼개질 때의 모양을 따른다. */
   function makeBrokenRift(seed, tint, S) {
     const r = rng32(seed), u = S / 512, cx = S / 2, cy = S / 2, gl = tint.glow, rim = tint.rim;
-    const ax = -0.4, L = S * 0.4, Wmax = S * 0.115;                      // 기울기(약 -23°), 반 길이, 최대 반폭
+    const ax = -0.4, L = S * 0.38, Wmax = S * 0.19;                      // 기울기(약 -23°), 반 길이, 최대 반폭
     const ca = Math.cos(ax), sa = Math.sin(ax);
     const mkN = (n) => { const a = []; for (let i = 0; i < n; i++) a.push(r() * 2 - 1); return (t) => { const x = t * (n - 1), i = Math.floor(x), f = x - i, q = f * f * (3 - 2 * f); return a[i] * (1 - q) + a[Math.min(n - 1, i + 1)] * q; }; };
     const wander = mkN(6), wTop = mkN(7), wBot = mkN(7);
@@ -240,7 +240,7 @@
       g.strokeStyle = rim; g.globalAlpha = 0.5 + r() * 0.4; g.lineWidth = Math.max(0.8, wd * 0.25); g.stroke(); g.restore();
     }
     g.globalAlpha = 1;
-    return { c, S, pts, cx, cy, ax, hw: mx * 1.1, hh: my * 1.1, big: true, vc: [[cx, cy]], vr: 0.4 * S };
+    return { c, S, pts, cx, cy, ax, L, W: Wmax, hw: mx * 1.1, hh: my * 1.1, big: true, vc: [[cx, cy]], vr: 0.4 * S };
   }
 
   function makeGlow(rgb) {
@@ -531,6 +531,7 @@ void main(){
     raysTex = [makeRays(1), makeRays(2)];
     if (!vgl && !vglTried) { vglTried = true; initVortexGL(); }
     if (!vgl && !bakes[0]) bakes[0] = await bakeSwirl(384, 1.7);
+    if (variant === "red" && window.RasyancutSfx && window.RasyancutSfx.preload) window.RasyancutSfx.preload(BOLT_SFX);
     if (variant === "red") { if (!redTex) makeRedTex(); if (!ringGL && !ringTried) initRedRing(); initRiftGL(); }
     buildMiniStatic(); await step();
     if (document.fonts && document.fonts.load) {
@@ -1174,6 +1175,17 @@ void main(){
     }
     return pts;
   }
+  // 번개 소리: 틈에 가까울수록 크고 또렷하며(멀면 작고 먹먹하다), 틈이 화면의 어느 쪽에 있느냐에 따라 좌우에서 난다
+  const BOLT_SFX = ["assets/sfx/lightning-1.wav?v=1", "assets/sfx/lightning-2.wav?v=1", "assets/sfx/lightning-3.wav?v=1"];
+  let lastBoltSfx = -1;
+  function playBoltSound(sp) {
+    const sfx = window.RasyancutSfx; if (!sfx || !sfx.playAt) return;
+    const D = Math.hypot(sp.x - cam.x, sp.y - cam.y), near = clamp(1 - D / 12000, 0, 1);      // 12000 칸 안에서 들리고, 가까울수록 커진다
+    if (near <= 0.01) return;
+    let k; do { k = (Math.random() * BOLT_SFX.length) | 0; } while (k === lastBoltSfx && BOLT_SFX.length > 1); lastBoltSfx = k;
+    const zoom = 0.75 + 0.25 * Math.min(1, cam.z / 0.5);                                      // 많이 확대해서 볼수록 조금 더 크게
+    sfx.playAt(BOLT_SFX[k], { volume: 0.32 * Math.pow(near, 1.7) * zoom, pan: clamp((sp.x - cam.x) * cam.z / (cw / 2), -1, 1) * 0.75, cutoff: 600 + 12000 * near * near, rate: 0.93 + Math.random() * 0.14 });
+  }
   function spawnBolt(s, t) {
     const sp = riftSpot(s);
     const ox = sp.x + (Math.random() - 0.5) * sp.hw * 0.7, oy = sp.y + (Math.random() - 0.5) * sp.hh * 0.9;
@@ -1186,7 +1198,7 @@ void main(){
       paths.push({ pts: boltPath(p[0], p[1], p[0] + Math.cos(ba) * bl, p[1] + Math.sin(ba) * bl, 5, bl * 0.22), w: 0.5 });
     }
     bolts.push({ paths, born: t, life: 0.3 + Math.random() * 0.32, seed: Math.random() * 100, x0: ox, y0: oy, x1: ex, y1: ey });
-    boltFlash = Math.min(1.4, boltFlash + 0.9); smokeHeavy = Math.min(1.5, smokeHeavy + 0.7);
+    playBoltSound(sp); boltFlash = Math.min(1.4, boltFlash + 0.9); smokeHeavy = Math.min(1.5, smokeHeavy + 0.7);
     const burst = (x, y, n, sp0) => { for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = sp0 * (0.25 + Math.random()); sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: 0.25 + Math.random() * 0.6 }); } };
     burst(ox, oy, 14, 2600); burst(ex, ey, 26, 3300);              // 나올 때마다 스파크: 틈에서 한 번, 번개가 닿는 곳에서 한 번
     for (const p of paths) if (p.w < 1 && Math.random() < 0.7) burst(p.pts[p.pts.length - 1][0], p.pts[p.pts.length - 1][1], 6, 1800);
@@ -1424,7 +1436,7 @@ void main(){
   const RIFT_FS = `
 precision highp float;
 uniform sampler2D uSpr, uMask;
-uniform vec2 uRegion0, uRegionSize, uC, uHalf;
+uniform vec2 uRegion0, uRegionSize, uC, uHalf, uDir;
 uniform float uS, uT, uG, uFlash, uSeed;
 varying vec2 vUv;
 float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -1436,7 +1448,8 @@ vec4 scene(vec2 uv){
   vec2 suv = px / uS;
   vec4 spr = texture2D(uSpr, suv);
   float mk = texture2D(uMask, suv).r * step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-  vec2 p = (px - uC) / uHalf;
+  vec2 v0 = px - uC;
+  vec2 p = vec2(dot(v0, uDir), dot(v0, vec2(-uDir.y, uDir.x))) / uHalf;                // 소용돌이가 균열의 방향을 따라 길게 놓인다
   // 일렁임: 소용돌이 좌표를 천천히 출렁이는 노이즈로 휘고, 반지름이 숨 쉬듯 흔들린다
   vec2 w = vec2(fbm(p * 1.6 + vec2(0.0, uT * 0.35)), fbm(p * 1.6 + vec2(5.2, 1.3) - uT * 0.3)) - 0.5;
   vec2 q = p + 0.38 * w + 0.05 * vec2(sin(p.y * 7.0 + uT * 3.0), cos(p.x * 6.0 - uT * 2.6));
@@ -1450,12 +1463,12 @@ vec4 scene(vec2 uv){
   float arms = 0.5 + 0.5 * sin(4.0 * tw + n1 * 3.5);
   float body = smoothstep(0.25, 0.85, n1 * 0.7 + n2 * 0.5) * (0.45 + 0.55 * arms);
   float edge = smoothstep(0.5, 1.05, rr);
-  float core = exp(-rr * rr * 14.0);
+  float core = exp(-rr * rr * 26.0);
   vec3 col = vec3(0.03, 0.0, 0.008);
   col += vec3(0.58, 0.03, 0.05) * body * 1.15 * (0.35 + 0.9 * (1.0 - edge));
-  col += vec3(1.0, 0.26, 0.12) * pow(body, 2.0) * arms * 0.9;
-  col += vec3(1.0, 0.55, 0.4) * core * (1.2 + 0.5 * sin(uT * 6.0) + uFlash);
-  col += vec3(1.0, 0.92, 0.88) * exp(-rr * rr * 90.0) * 1.6;
+  col += vec3(1.0, 0.3, 0.14) * pow(body, 2.0) * arms * 1.25;
+  col += vec3(1.0, 0.55, 0.4) * core * (0.7 + 0.3 * sin(uT * 6.0) + uFlash);
+  col += vec3(1.0, 0.92, 0.88) * exp(-rr * rr * 160.0) * 1.0;
   col += vec3(0.8, 0.1, 0.1) * pow(n2, 5.0) * 0.8 * (1.0 - edge);   // 소용돌이 속에서 번득이는 불씨
   vec3 outc = spr.rgb + col * mk;                                 // 틈 그림의 어두운 속(불투명한 검정) 위에 소용돌이를 더해 얹는다
   return vec4(outc, max(mk, spr.a));
@@ -1501,7 +1514,7 @@ void main(){
         const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
         const loc = gl.getAttribLocation(prog, "aPos"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-        const U = {}; ["uSpr", "uMask", "uRegion0", "uRegionSize", "uC", "uHalf", "uS", "uT", "uG", "uFlash", "uSeed"].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
+        const U = {}; ["uSpr", "uMask", "uRegion0", "uRegionSize", "uC", "uHalf", "uDir", "uS", "uT", "uG", "uFlash", "uSeed"].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
         riftGL = { cv, gl, U, tex: [] };
       }
       if (!riftGL) return;
@@ -1522,7 +1535,7 @@ void main(){
       // 틈이 차지하는 영역(스프라이트 좌표)만 그린다
       const cx = sp.vc[0][0], cy = sp.vc[0][1], rx0 = Math.max(0, cx - sp.hw * 1.3), ry0 = Math.max(0, cy - sp.hh * 1.25);
       const rw = Math.min(S - rx0, sp.hw * 2.6), rh = Math.min(S - ry0, sp.hh * 2.5);
-      riftGL.region = { x: rx0, y: ry0, w: rw, h: rh, cx, cy, hw: sp.hw, hh: sp.hh };
+      riftGL.region = { x: rx0, y: ry0, w: rw, h: rh, cx, cy, hw: sp.hw, hh: sp.hh, half: sp.L ? [sp.L * 1.0, sp.W * 1.35] : [sp.hw, sp.hh], dir: sp.L ? [Math.cos(sp.ax), Math.sin(sp.ax)] : [1, 0] };
       riftGL.cv.width = window.innerWidth < 760 ? 288 : 384; riftGL.cv.height = Math.max(64, Math.round(riftGL.cv.width * rh / rw));
     } catch (e) { riftGL = null; console.warn("불안정한 틈(WebGL) 사용 불가 → 2D 로 대체:", e.message); }
   }
@@ -1551,7 +1564,7 @@ void main(){
       gl.viewport(0, 0, cv.width, cv.height);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, riftGL.tex[0]); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, riftGL.tex[1]);
       gl.uniform1i(U.uSpr, 0); gl.uniform1i(U.uMask, 1);
-      gl.uniform2f(U.uRegion0, R.x, R.y); gl.uniform2f(U.uRegionSize, R.w, R.h); gl.uniform2f(U.uC, R.cx, R.cy); gl.uniform2f(U.uHalf, R.hw, R.hh);
+      gl.uniform2f(U.uRegion0, R.x, R.y); gl.uniform2f(U.uRegionSize, R.w, R.h); gl.uniform2f(U.uC, R.cx, R.cy); gl.uniform2f(U.uHalf, R.half[0], R.half[1]); gl.uniform2f(U.uDir, R.dir[0], R.dir[1]);
       gl.uniform1f(U.uS, S); gl.uniform1f(U.uT, t); gl.uniform1f(U.uG, glitch); gl.uniform1f(U.uFlash, boltFlash * 0.8); gl.uniform1f(U.uSeed, s.phase * 7.0);
       gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       ctx.drawImage(cv, (R.x - S / 2) * k, (R.y - S / 2) * k, R.w * k, R.h * k);

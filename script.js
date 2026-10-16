@@ -315,7 +315,28 @@
         a.play().catch(() => {});
       } catch (_) { /* 무음으로 넘어간다 */ }
     };
-    return { play, unlock };
+    // 효과음 파일을 주소로 불러 두었다가 거리에 따라 크기·먹먹함·좌우 위치를 바꿔 재생한다 (맵의 번개 소리 등)
+    const bufs = {};
+    const load = (url) => {
+      if (!ctx || bufs[url]) return;
+      bufs[url] = fetch(url).then((r) => r.arrayBuffer()).then((a) => ctx.decodeAudioData(a)).catch(() => null);
+    };
+    const playAt = (url, { volume = 1, pan = 0, cutoff = 20000, rate = 1 } = {}) => {
+      if (!ctx || ctx.state !== "running") return;
+      if (!bufs[url]) { load(url); return; }           // 처음 한 번은 불러오는 동안 건너뛴다 (preload 로 미리 불러 두면 바로 난다)
+      bufs[url].then((buf) => {
+        if (!buf) return;
+        const src = ctx.createBufferSource(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+        src.buffer = buf; src.playbackRate.value = rate; g.gain.value = volume;
+        f.type = "lowpass"; f.frequency.value = cutoff;
+        let node = src.connect(f).connect(g);
+        if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); node = node.connect(p); }
+        node.connect(ctx.destination);
+        src.start();
+      });
+    };
+    const preload = (urls) => urls.forEach(load);
+    return { play, unlock, playAt, preload };
   })();
   window.RasyancutSfx = Sfx;               // 이후 화면에서도 같은 소리를 재사용
 
