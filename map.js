@@ -165,6 +165,79 @@
     return { c, S, pts, cx, cy, hw: hwMax * 1.12, hh: hh * 1.02, big: !!o.big, vc: [[cx, cy]], vr: (o.big ? 0.46 : 0.2) * S };
   }
 
+
+  /** 버려진 차원의 틈: 세로로 찢긴 상처(makeWound)와 달리, 가로로 넓게 부서져 내린 구멍.
+   *  유리가 깨진 듯 직선으로 꺾인 가장자리에 뾰족한 파편이 돋고, 떨어져 나간 조각들이 둥둥 떠 있으며, 부서진 바깥 막과 직선의 금이 사방으로 뻗는다. */
+  function makeBrokenRift(seed, tint, S) {
+    const r = rng32(seed), u = S / 512, cx = S / 2, cy = S / 2, gl = tint.glow, rim = tint.rim;
+    const rx = S * 0.35, ry = S * 0.26, tilt = -0.2;                    // 가로로 넓고 살짝 기울어진 구멍
+    const nV = 13, base = [];
+    for (let i = 0; i < nV; i++) {
+      const th = (i + (r() - 0.5) * 0.5) * Math.PI * 2 / nV;
+      const f = i % 2 ? 0.52 + r() * 0.16 : (r() < 0.28 ? 1.12 + r() * 0.2 : 0.8 + r() * 0.2);   // 안으로 파인 곳과 뾰족하게 솟은 곳이 번갈아 나온다
+      base.push([th, f]);
+    }
+    const tr = (th, f) => { const x = Math.cos(th) * rx * f, y = Math.sin(th) * ry * f; return [cx + x * Math.cos(tilt) - y * Math.sin(tilt), cy + x * Math.sin(tilt) + y * Math.cos(tilt)]; };
+    const pts = [];
+    base.forEach(([th, f], i) => {                                      // 모서리 사이에 한 번 더 꺾인 점을 넣어 직선 파단면처럼 만든다
+      pts.push(tr(th, f));
+      const [th2, f2] = base[(i + 1) % nV], thm = th2 > th ? (th + th2) / 2 : (th + th2 + Math.PI * 2) / 2, fm = (f + f2) / 2 * (0.9 + r() * 0.16);
+      pts.push(tr(thm, fm));
+    });
+    let mx = 0, my = 0; pts.forEach(([x, y]) => { mx = Math.max(mx, Math.abs(x - cx)); my = Math.max(my, Math.abs(y - cy)); });
+    const mkPath = (p, k) => { const pa = new Path2D(); p.forEach(([x, y], i) => { const X = cx + (x - cx) * k, Y = cy + (y - cy) * k; i ? pa.lineTo(X, Y) : pa.moveTo(X, Y); }); pa.closePath(); return pa; };
+    const path = mkPath(pts, 1);
+
+    const c = mk(S, S), g = c.getContext("2d");
+    g.lineJoin = "miter"; g.lineCap = "butt"; g.miterLimit = 6;
+    // 1) 직선으로 뻗는 금(깨진 유리): 꺾인 모서리마다 곧게 뻗고 한 번씩 갈라진다
+    g.strokeStyle = rim;
+    const crack = (x, y, ang, len, w, a, depth) => {
+      let px = x, py = y; const segs = 2 + ((r() * 3) | 0);
+      for (let i = 0; i < segs; i++) {
+        ang += (r() - 0.5) * 0.5; const l = len / segs, nx = px + Math.cos(ang) * l, ny = py + Math.sin(ang) * l, f = 1 - i / segs;
+        g.globalAlpha = a * f; g.lineWidth = Math.max(0.5, w * (0.4 + 0.6 * f)); g.beginPath(); g.moveTo(px, py); g.lineTo(nx, ny); g.stroke();
+        if (depth < 1 && r() < 0.4) crack(nx, ny, ang + (r() < 0.5 ? -1 : 1) * (0.7 + r() * 0.5), len * 0.5 * f, w * 0.7, a * 0.8, depth + 1);
+        px = nx; py = ny;
+      }
+    };
+    for (let i = 0; i < pts.length; i += 2) {
+      const [x, y] = pts[i], a = Math.atan2(y - cy, x - cx);
+      crack(x, y, a + (r() - 0.5) * 0.4, S * (0.07 + r() * 0.17), (1 + r() * 1.3) * u * 1.6, 0.4 + r() * 0.35, 0);
+    }
+    g.globalAlpha = 1;
+    // 2) 바깥으로 번지는 빛
+    g.save(); g.shadowColor = `rgba(${gl},0.9)`; g.shadowBlur = S * 0.09; g.fillStyle = `rgba(${gl},0.36)`; g.fill(path);
+    g.shadowBlur = S * 0.035; g.fillStyle = rim; g.globalAlpha = 0.45; g.fill(path); g.restore();
+    // 3) 부서진 바깥 막: 끊어진 점선 모양의 더 큰 윤곽
+    g.save(); g.setLineDash([S * 0.05, S * 0.016, S * 0.012, S * 0.022, S * 0.03, S * 0.014]);
+    g.strokeStyle = rim; g.globalAlpha = 0.5; g.lineWidth = 1.4 * u; g.stroke(mkPath(pts.map(([x, y]) => [x + (r() - 0.5) * S * 0.03, y + (r() - 0.5) * S * 0.03]), 1.13)); g.restore();
+    // 4) 입술: 날카롭게 꺾인 두꺼운 가장자리 → 밝은 능선
+    g.save(); g.strokeStyle = `rgba(${gl},0.5)`; g.lineWidth = S * 0.03; g.stroke(path);
+    g.strokeStyle = rim; g.globalAlpha = 0.92; g.lineWidth = S * 0.011; g.stroke(path); g.restore();
+    // 5) 속: 깊은 어둠
+    g.fillStyle = "#000"; g.fill(path);
+    g.save(); g.clip(path);
+    const gr = g.createRadialGradient(cx, cy, 0, cx, cy, Math.max(mx, my));
+    gr.addColorStop(0, `rgba(${gl},0.16)`); gr.addColorStop(0.55, `rgba(${gl},0.05)`); gr.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    g.strokeStyle = "rgba(0,0,0,0.92)"; g.lineWidth = S * 0.06; g.shadowColor = "#000"; g.shadowBlur = S * 0.05; g.stroke(path);   // 입술이 드리우는 그림자
+    g.restore();
+    // 6) 떨어져 나가 둥둥 떠 있는 파편들
+    g.shadowBlur = 0; g.lineJoin = "miter";
+    for (let i = 0; i < 16; i++) {
+      const th = r() * Math.PI * 2, d = 1.22 + r() * 0.5, x = cx + Math.cos(th) * mx * d, y = cy + Math.sin(th) * my * d * 1.05;
+      if (Math.abs(x - cx) > S * 0.46 || Math.abs(y - cy) > S * 0.46) continue;
+      const sz = S * (0.012 + r() * r() * 0.05), rot = r() * 6.28, nvx = 3 + ((r() * 2) | 0);
+      g.save(); g.translate(x, y); g.rotate(rot); g.beginPath();
+      for (let k = 0; k < nvx; k++) { const a = k * Math.PI * 2 / nvx + (r() - 0.5) * 0.8, rr = sz * (0.55 + r() * 0.7); k ? g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+      g.closePath(); g.shadowColor = `rgba(${gl},0.8)`; g.shadowBlur = S * 0.02; g.fillStyle = "#020003"; g.fill();
+      g.shadowBlur = 0; g.strokeStyle = rim; g.globalAlpha = 0.45 + r() * 0.45; g.lineWidth = Math.max(0.8, sz * 0.12); g.stroke(); g.restore();
+    }
+    g.globalAlpha = 1;
+    return { c, S, pts, cx, cy, hw: mx * 1.08, hh: my * 1.08, big: true, vc: [[cx, cy]], vr: 0.4 * S };
+  }
+
   function makeGlow(rgb) {
     const c = mk(256, 256), g = c.getContext("2d");
     const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
@@ -434,7 +507,7 @@ void main(){
       rifts.push(makeWound(1000 + i * 37, TINTS[i % 6], 512, { hw: 0.13 + rr() * 0.1, hh: 0.37 + rr() * 0.08, big: false })); await step();
     }
     rifts.push(variant === "red"
-      ? makeWound(777, { rim: "#ffb8ae", glow: "255,50,40" }, 768, { hw: 0.33, hh: 0.40, big: true })      // 불안정한 붉은 틈
+      ? makeBrokenRift(4242, { rim: "#ffb8ae", glow: "255,50,40" }, 768)      // 버려진 붉은 틈: 가로로 부서진 구멍(페이스리아·오비투아리바의 세로 상처와 모양이 다르다)
       : makeWound(777, { rim: NEON_PALE, glow: "238,255,107" }, 768, { hw: 0.33, hh: 0.40, big: true })); await step();
     await step();
     rifts.forEach((sp) => {                       // 멀리서 볼 때는 작게 줄여 둔 이미지를 쓴다(큰 이미지를 축소해 그리는 비용 제거)
