@@ -966,20 +966,6 @@ void main(){
   // ── ② 핏줄: 소용돌이 몸통을 따라 뻗은 가는 혈관이 맥박에 맞춰 번득인다
   float vn = fbm(c * 3.4 + vec2(lr * 4.5, uT * 0.05));
   float vein = smoothstep(0.90, 0.985, 1.0 - abs(2.0 * vn - 1.0)) * mask;
-  // ── ③ 눈: 소용돌이를 따라 도는 눈들이 군데군데 떠서 깜박이며 중심을 노려본다 (로그-극좌표라 눈이 찌그러지지 않는다)
-  vec2 gp = vec2(a - uT * 0.3, lr) * (10.0 / 6.2831853);
-  vec2 cell = floor(gp), f = fract(gp) - 0.5;
-  cell.x = mod(cell.x, 10.0);
-  float h = hash(cell + 13.7);
-  float eyeOn = step(0.66, h) * smoothstep(uRi * 1.35, uRi * 1.8, r) * (1.0 - smoothstep(0.62, 0.85, r));
-  vec2 e = f + (vec2(hash(cell + 2.1), hash(cell + 7.3)) - 0.5) * 0.08;
-  float openA = smoothstep(-0.25, 0.5, sin(uT * (0.45 + h * 0.7) + h * 40.0));          // 깜박임(대부분 뜨고 있다가 감긴다)
-  float ex = e.x * 2.4, ey = e.y * 2.4 / max(openA, 0.05);
-  float lidY = 0.3 * (1.0 - ex * ex);
-  float eyeIn = (1.0 - smoothstep(0.0, 0.1, abs(ey) - lidY)) * step(abs(ex), 1.0) * eyeOn;
-  float lid = exp(-pow((abs(ey) - lidY) / 0.04, 2.0)) * step(abs(ex), 1.0) * eyeOn * openA;
-  float pupil = (1.0 - smoothstep(0.0, 0.07, abs(ex) - 0.075 * pow(max(0.0, 1.0 - abs(ey) / max(lidY, 0.02)), 0.5))) * eyeIn * openA;   // 세로로 찢어진 동공
-  float glare = exp(-dot(e - vec2(0.06, -0.05), e - vec2(0.06, -0.05)) * 60.0) * eyeOn * openA;
 
   vec3 col = vec3(0.50, 0.025, 0.045) * body * 1.25;
   col += vec3(1.0, 0.2, 0.09) * pow(body, 2.0) * arms * 0.95;
@@ -988,14 +974,8 @@ void main(){
   col *= 1.0 + 0.15 * beat * mask;                                                      // 박동에 맞춰 전체가 부풀 듯 밝아졌다 가라앉는다
   col -= vec3(0.5, 0.08, 0.1) * wave * 0.9;                                           // 파문이 지나는 자리는 짙게 가라앉는다
   col += vec3(1.0, 0.25, 0.2) * wave * 0.35;
-  vec3 iris = mix(vec3(1.0, 0.55, 0.14), vec3(0.8, 0.05, 0.03), smoothstep(0.1, 0.9, abs(ex)));
-  iris *= (0.7 + 0.6 * vnoise(vec2(ex * 9.0 + h * 17.0, ey * 24.0))) * (0.8 + 0.45 * beat);
-  col = mix(col, iris, eyeIn * 0.97);           // 눈의 속(붉은 홍채)
-  col += vec3(1.0, 0.42, 0.34) * glare * 0.55;
-  col *= 1.0 - pupil;                                                                   // 동공은 칠흑
-  col += vec3(1.0, 0.62, 0.52) * lid * 0.95;                                            // 눈꺼풀 가장자리
-  float alpha = clamp(mask * (0.3 + 0.8 * body) + hot * 0.85 + eyeIn * 0.95 + lid * 0.8 + wave * 0.3, 0.0, 1.0);
-  gl_FragColor = vec4(col * clamp(mask + hot + eyeIn, 0.0, 1.0), alpha);
+  float alpha = clamp(mask * (0.3 + 0.8 * body) + hot * 0.85 + wave * 0.3, 0.0, 1.0);
+  gl_FragColor = vec4(col * clamp(mask + hot, 0.0, 1.0), alpha);
 }`;
   function initRedRing() {
     ringTried = true;
