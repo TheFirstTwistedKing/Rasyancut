@@ -13,10 +13,10 @@
 
   // ───────────────────────── 상수 ─────────────────────────
   // 원형 맵: 반지름 96000(지름 192000 = 이전 16000의 12배). 원점(0,0) = 성역의 중심
-  // 맵은 두 가지: vanguard(라시안컷 : 뱅가드)와 red(붉은 열매 — 더 큰 맵, 붉은 소용돌이·검붉은 기류·불안정한 틈). 입장 전에 setVariant 로 고른다.
+  // 맵은 두 가지: vanguard(라시안컷 : 뱅가드)와 red(붉은 열매 — 더 큰 맵, 붉은 소용돌이·검붉은 기류·버려진 틈). 입장 전에 setVariant 로 고른다.
   const VARIANTS = {
     vanguard: { R: 96000, gates: 259, specialScale: 2.6, special: { name: "페이스리아와 오비투아리바의 차원의 틈", x: 34000, y: -21000 } },   // 쌍둥이의 틈: 소용돌이는 하나
-    red:      { R: 140000, gates: 380, specialScale: 2.0, special: { name: "불안정한 차원의 틈", x: -52000, y: 38000 } },
+    red:      { R: 140000, gates: 380, specialScale: 2.0, special: { name: "버려진 차원의 틈", x: -52000, y: 38000 } },
   };
   let variant = "vanguard";
   let R_MAP = VARIANTS.vanguard.R;                  // 원형 맵의 반지름 (vanguard: 96000 = 지름 192000, 이전 16000의 12배)
@@ -420,7 +420,7 @@ void main(){
     const V = VARIANTS[name];
     R_MAP = V.R; WORLD = R_MAP * 2; NORMAL_GATES = V.gates; SPECIAL = [V.special];
     prepared = false; gates = []; specials = []; rifts = []; glows = []; nebulaSprites = []; miniStatic = null;
-    bolts.length = 0; sparks.length = 0;
+    bolts.length = 0; sparks.length = 0; smoke.length = 0;
   }
 
   async function prepare(onProgress) {
@@ -869,7 +869,7 @@ void main(){
   }
 
   // ───────────────────────── 붉은 맵 ─────────────────────────
-  // 성역의 경계를 감싸는 붉은 소용돌이 · 맵 전체를 흐르는 검붉은 기류 · 불안정한 붉은 틈(눌러도 반응 없음)에서 치는 붉은 번개와 스파크
+  // 성역의 경계를 감싸는 붉은 소용돌이 · 맵 전체를 흐르는 검붉은 기류 · 버려진 붉은 틈(눌러도 반응 없음)에서 치는 붉은 번개와 스파크, 뿜어져 나오는 검은 기운
   let redTex = null, ringGL = null, ringTried = false;
   const bolts = [], sparks = [];
   let nextBoltT = 2, boltFlash = 0, redBloom = null;
@@ -1108,7 +1108,7 @@ void main(){
       paths.push({ pts: boltPath(p[0], p[1], p[0] + Math.cos(ba) * bl, p[1] + Math.sin(ba) * bl, 5, bl * 0.22), w: 0.5 });
     }
     bolts.push({ paths, born: t, life: 0.3 + Math.random() * 0.32, seed: Math.random() * 100, x0: ox, y0: oy, x1: ex, y1: ey });
-    boltFlash = Math.min(1.4, boltFlash + 0.9);
+    boltFlash = Math.min(1.4, boltFlash + 0.9); smokeHeavy = Math.min(1.5, smokeHeavy + 0.7);
     const burst = (x, y, n, sp0) => { for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = sp0 * (0.25 + Math.random()); sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: 0.25 + Math.random() * 0.6 }); } };
     burst(ox, oy, 14, 2600); burst(ex, ey, 26, 3300);              // 나올 때마다 스파크: 틈에서 한 번, 번개가 닿는 곳에서 한 번
     for (const p of paths) if (p.w < 1 && Math.random() < 0.7) burst(p.pts[p.pts.length - 1][0], p.pts[p.pts.length - 1][1], 6, 1800);
@@ -1160,7 +1160,185 @@ void main(){
     ctx.restore();
   }
 
-  // ── 불안정한 틈 안쪽의 일렁이는 소용돌이 + 틈 모습의 글리치 (한 장의 셰이더로 그린다)
+
+  // ── 버려진 틈에서 우수수 뿜어져 나오는 검은 기운: 뭉게뭉게 번지는 연기 · 빠르게 뻗는 검은 촉수 · 튀어 나가는 검은 파편
+  const smoke = [];
+  let smokeTex = null, smokeAcc = 0, smokeGush = 0, smokeNext = 1.5, smokeHeavy = 0;
+  function makeSmokeTex() {
+    const N = 192, c = mk(N, N), g = c.getContext("2d");
+    const lobes = [[0, 0, 0.5], [0.2, 0.08, 0.34], [-0.22, 0.05, 0.32], [0.04, -0.2, 0.3], [-0.06, 0.22, 0.3], [0.26, -0.14, 0.24], [-0.27, -0.12, 0.24]];
+    for (const [ox, oy, rr] of lobes) {
+      const x = N / 2 + ox * N * 0.62, y = N / 2 + oy * N * 0.62, rad = rr * N * 0.92;
+      const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+      gr.addColorStop(0, "rgba(3,0,4,0.95)"); gr.addColorStop(0.5, "rgba(4,0,6,0.62)"); gr.addColorStop(1, "rgba(4,0,6,0)");
+      g.fillStyle = gr; g.fillRect(0, 0, N, N);
+    }
+    const r2 = mk(N, N), h = r2.getContext("2d");                      // 가장자리에 스미는 검붉은 빛
+    const hr = h.createRadialGradient(N / 2, N / 2, N * 0.14, N / 2, N / 2, N / 2);
+    hr.addColorStop(0, "rgba(160,10,24,0)"); hr.addColorStop(0.62, "rgba(190,16,30,0.5)"); hr.addColorStop(1, "rgba(140,0,14,0)");
+    h.fillStyle = hr; h.fillRect(0, 0, N, N);
+    return { body: c, rim: r2 };
+  }
+
+  // 틈에서 흘러나오는 검은 연기를 한 장의 셰이더로 그린다: 도메인 워핑한 노이즈를 바깥으로 흘려 보내 유체처럼 굽이치는 결을 만들고,
+  // 틈 쪽을 향한 면에는 붉은 림 라이트, 연기 속에는 안쪽 빛이 비쳐 번진다 (이미지: 어둠 속에서 붉은 빛을 머금은 검은 연기)
+  const SMOKE_FS = `
+precision highp float;
+uniform float uT, uGush, uSeed;
+varying vec2 vUv;
+float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ v += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return v; }
+float smokeD(vec2 q){
+  float r = length(q);
+  vec2 dir = q / (r + 0.02);
+  vec2 w = vec2(fbm(q * 0.45 + vec2(uSeed, -uT * 0.07)), fbm(q * 0.45 + vec2(5.2 + uSeed, 1.3) + uT * 0.06)) - 0.5;
+  vec2 a = q + w * 3.0;                                              // 굽이치는 흐름
+  vec2 vel = dir + vec2(-dir.y, dir.x) * 0.4 + w * 1.2;              // 바깥으로 흐르며 살짝 소용돌이친다
+  float ph0 = fract(uT * 0.17), ph1 = fract(uT * 0.17 + 0.5), cr = abs(2.0 * ph0 - 1.0);   // 플로우맵: 늘어지지 않고 계속 흘러나간다
+  vec2 s0 = a - vel * ph0 * 4.2, s1 = a - vel * ph1 * 4.2 + 7.3;
+  float n = mix(fbm(s0 * 0.6), fbm(s1 * 0.6), cr);
+  float fil = 1.0 - abs(2.0 * mix(fbm(s0 * 1.25 + 3.0), fbm(s1 * 1.25 + 3.0), cr) - 1.0);   // 가느다란 연기 올
+  float d = n * 0.85 + 0.4 * pow(fil, 2.0) - 0.06 * r;
+  float pulse = 0.5 + 0.5 * sin(r * 2.2 - uT * 3.0 + n * 5.0);       // 우수수 — 덩어리째 밀려 나오는 파동
+  d += (pulse - 0.5) * 0.2 + 0.16 * uGush;
+  float dens = smoothstep(0.5, 0.86, d);
+  dens *= 1.0 - smoothstep(3.0, 7.6, r);                             // 멀어질수록 흩어진다
+  return dens * smoothstep(0.0, 0.5, r + 0.25);
+}
+void main(){
+  vec2 p = (vUv * 2.0 - 1.0) * 8.0;
+  float r = length(p);
+  float d = smokeD(p);
+  float dIn = smokeD(p - normalize(p + 1e-3) * 0.11);                // 틈 쪽으로 조금 떨어진 곳의 농도
+  float rim = clamp((d - dIn) * 2.2, 0.0, 1.0) * d;                  // 틈을 향한 면만 붉게 빛난다
+  float lit = 1.0 / (1.0 + r * 0.45);
+  vec3 col = vec3(1.0, 0.12, 0.07) * rim * (0.1 + 0.45 * lit);
+  col += vec3(0.3, 0.015, 0.035) * d * exp(-r * 0.6) * 0.5;           // 연기 속으로 스며든 붉은 빛
+  float edge = 1.0 - smoothstep(0.82, 1.0, length(vUv * 2.0 - 1.0));
+  float alpha = clamp(d * 1.05, 0.0, 1.0) * edge;
+  gl_FragColor = vec4(col * edge, alpha);
+}`;
+  let smokeGL = null, smokeGLTried = false;
+  function initSmokeGL() {
+    smokeGLTried = true;
+    try {
+      const cv = document.createElement("canvas"); cv.width = cv.height = window.innerWidth < 760 ? 416 : 576;
+      const gl = cv.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: false, preserveDrawingBuffer: true });
+      if (!gl) return;
+      const sh = (type, src) => { const x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; };
+      const prog = gl.createProgram();
+      gl.attachShader(prog, sh(gl.VERTEX_SHADER, VORTEX_VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, SMOKE_FS));
+      gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      gl.useProgram(prog);
+      const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(prog, "aPos"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      smokeGL = { cv, gl, uT: gl.getUniformLocation(prog, "uT"), uGush: gl.getUniformLocation(prog, "uGush"), uSeed: gl.getUniformLocation(prog, "uSeed") };
+    } catch (e) { smokeGL = null; console.warn("검은 연기(WebGL) 사용 불가 → 입자로 대체:", e.message); }
+  }
+  function drawSmokeGL(s, t) {
+    const sp = riftSpot(s), U = sp.hw, { gl, cv } = smokeGL;
+    gl.viewport(0, 0, cv.width, cv.height);
+    gl.uniform1f(smokeGL.uT, t); gl.uniform1f(smokeGL.uGush, Math.min(1.5, smokeGush * 0.8 + smokeHeavy * 0.6)); gl.uniform1f(smokeGL.uSeed, s.phase * 3.0);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    ctx.globalAlpha = 1; ctx.drawImage(cv, sp.x - U * 8, sp.y - U * 8, U * 16, U * 16);
+  }
+
+  function emitSmoke(s, n, boost) {
+    const sp = riftSpot(s), cr = Math.cos(s.rot), sr = Math.sin(s.rot), U = sp.hw;
+    for (let i = 0; i < n; i++) {
+      const lx = (Math.random() - 0.5) * sp.hw * 1.1, ly = (Math.random() - 0.5) * sp.hh * 1.4;
+      const la = Math.atan2(ly / sp.hh, lx / sp.hw) + (Math.random() - 0.5) * 1.5 + s.rot;
+      const kind = smokeGL ? 0.95 : Math.random();                       // 셰이더가 연기를 그리면 파편만 입자로
+      const sx = sp.x + lx * cr - ly * sr, sy = sp.y + lx * sr + ly * cr;
+      if (kind < 0.66) {                                                // 뭉게뭉게 번지는 검은 연기
+        const v = U * (0.9 + Math.random() * 2.6) * boost;
+        smoke.push({ k: 0, x: sx, y: sy, vx: Math.cos(la) * v, vy: Math.sin(la) * v, age: 0, life: 3.2 + Math.random() * 3.6, r0: U * (0.3 + Math.random() * 0.45), r1: U * (1.4 + Math.random() * 2.2), rot: Math.random() * 6.3, spin: (Math.random() - 0.5) * 0.8, ph: Math.random() * 6.3, a: 0.7 + Math.random() * 0.3 });
+      } else if (kind < 0.88) {                                         // 길게 뻗어 나가는 검은 촉수
+        const v = U * (2.2 + Math.random() * 3.2) * boost;
+        smoke.push({ k: 1, x: sx, y: sy, vx: Math.cos(la) * v, vy: Math.sin(la) * v, age: 0, life: 0.9 + Math.random() * 1.4, w: U * (0.05 + Math.random() * 0.1), ph: Math.random() * 6.3, a: 0.9 });
+      } else {                                                          // 튀어 나가는 검은 파편
+        const v = U * (1.2 + Math.random() * 3.6) * boost;
+        smoke.push({ k: 2, x: sx, y: sy, vx: Math.cos(la) * v, vy: Math.sin(la) * v, age: 0, life: 1.2 + Math.random() * 2.2, w: U * (0.03 + Math.random() * 0.06), rot: Math.random() * 6.3, spin: (Math.random() - 0.5) * 9, ph: Math.random() * 6.3, a: 1 });
+      }
+    }
+  }
+  function updateSmoke(t, dt) {
+    const s = specials[0]; if (!s) { smoke.length = 0; return; }
+    dt = Math.min(dt, 0.06);
+    smokeGush = Math.max(smokeGush, boltFlash * 0.9) * Math.exp(-dt * 1.5);
+    smokeHeavy *= Math.exp(-dt * 2.2);
+    const sp = riftSpot(s), viewR = Math.hypot(cw, ch) / 2 / cam.z;
+    const near = Math.hypot(sp.x - cam.x, sp.y - cam.y) < viewR + 16000;
+    if (near) {
+      const pulse = 0.65 + 0.35 * Math.sin(t * 1.3) * Math.sin(t * 0.47 + 1.0);        // 들숨/날숨처럼 세기가 오르내린다
+      smokeAcc += dt * (30 + 50 * pulse + 90 * smokeGush + 120 * smokeHeavy) * (smokeGL ? 0.3 : 1);
+      const n = Math.floor(smokeAcc); smokeAcc -= n;
+      if (n) emitSmoke(s, Math.min(n, 12), 1 + 0.5 * smokeGush);
+      if (t >= smokeNext) { smokeHeavy = 1; emitSmoke(s, smokeGL ? 10 : 26, 1.5); smokeNext = t + 1.6 + Math.random() * 2.6; }   // 가끔 한꺼번에 우수수 뿜어낸다
+    }
+    for (let i = smoke.length - 1; i >= 0; i--) {
+      const p = smoke[i]; p.age += dt;
+      if (p.age >= p.life) { smoke.splice(i, 1); continue; }
+      const drag = Math.exp(-dt * (p.k === 0 ? 0.5 : p.k === 1 ? 1.2 : 0.6));
+      const w = Math.sin(t * 1.7 + p.ph * 3.0) * 0.6 + Math.sin(t * 0.9 + p.ph) * 0.4;        // 소용돌이치듯 굽는다
+      const curl = (p.k === 0 ? 0.9 : 1.6) * w * dt;
+      const cx = Math.cos(curl), cy = Math.sin(curl), nvx = p.vx * cx - p.vy * cy, nvy = p.vx * cy + p.vy * cx;
+      p.vx = nvx * drag; p.vy = nvy * drag; p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.k !== 1) p.rot += p.spin * dt;
+    }
+    if (smoke.length > 480) smoke.splice(0, smoke.length - 480);
+  }
+  function drawSmoke(t, z) {
+    if (!smokeGLTried) initSmokeGL();
+    if (!smokeGL && !smokeTex) smokeTex = makeSmokeTex();
+    if (!smokeTex) smokeTex = makeSmokeTex();
+    const { body, rim } = smokeTex;
+    ctx.save();
+    // 1) 검붉은 가장자리 빛: 까만 연기가 어둠 속에서도 윤곽으로 읽히게 한다
+    ctx.globalCompositeOperation = "lighter";
+    const s0 = specials[0];
+    if (s0 && redBloom) {                                                // 틈 주변에 번진 검붉은 안개: 이게 있어야 까만 기운이 윤곽으로 보인다
+      const sp = riftSpot(s0);
+      ctx.globalAlpha = 0.62; ctx.drawImage(redBloom.cool, sp.x - sp.hw * 8, sp.y - sp.hw * 8, sp.hw * 16, sp.hw * 16);
+      ctx.globalAlpha = 0.5; ctx.drawImage(redBloom.hot, sp.x - sp.hw * 5, sp.y - sp.hw * 5, sp.hw * 10, sp.hw * 10);
+    }
+    for (const p of smoke) {
+      if (p.k !== 0) continue;
+      const f = p.age / p.life, env = Math.min(1, f / 0.1) * Math.pow(1 - f, 1.3), r = p.r0 + (p.r1 - p.r0) * Math.pow(f, 0.7);
+      ctx.globalAlpha = 0.2 * env * p.a; ctx.drawImage(rim, p.x - r * 1.35, p.y - r * 1.35, r * 2.7, r * 2.7);
+    }
+    // 2) 검은 몸통
+    ctx.globalCompositeOperation = "source-over";
+    if (smokeGL && s0) drawSmokeGL(s0, t);
+    for (const p of smoke) {
+      const f = p.age / p.life;
+      if (p.k === 0) {
+        const env = Math.min(1, f / 0.1) * Math.pow(1 - f, 1.1), r = p.r0 + (p.r1 - p.r0) * Math.pow(f, 0.7);
+        ctx.globalAlpha = 0.95 * env * p.a;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.drawImage(body, -r * 1.1, -r * 1.1, r * 2.2, r * 2.2); ctx.restore();
+      } else if (p.k === 1) {                                           // 끝이 가늘어지며 휘어 뻗는 검은 촉수
+        const env = Math.min(1, f / 0.06) * (1 - f), tl = 0.7, ww = p.w * (1 - f * 0.4) * 1.4;
+        const hx = p.x, hy = p.y, tx = p.x - p.vx * tl, ty = p.y - p.vy * tl, L = Math.hypot(tx - hx, ty - hy) || 1, nx = -(ty - hy) / L, ny = (tx - hx) / L;
+        const bend = Math.sin(t * 5 + p.ph * 3) * L * 0.22;
+        ctx.globalAlpha = 0.95 * env; ctx.fillStyle = "#020003";
+        ctx.beginPath(); ctx.moveTo(hx + nx * ww, hy + ny * ww);
+        ctx.quadraticCurveTo((hx + tx) / 2 + nx * (ww * 0.7 + bend), (hy + ty) / 2 + ny * (ww * 0.7 + bend), tx + nx * bend * 1.4, ty + ny * bend * 1.4);
+        ctx.quadraticCurveTo((hx + tx) / 2 - nx * (ww * 0.7 - bend), (hy + ty) / 2 - ny * (ww * 0.7 - bend), hx - nx * ww, hy - ny * ww);
+        ctx.arc(hx, hy, ww, Math.atan2(-ny, -nx), Math.atan2(ny, nx), true); ctx.fill();
+      } else {
+        const env = Math.min(1, f / 0.05) * (1 - f * f), w = p.w;
+        ctx.globalAlpha = 0.95 * env; ctx.fillStyle = "#030004"; ctx.strokeStyle = `rgba(210,40,46,${0.7 * env})`; ctx.lineWidth = Math.max(w * 0.22, 0.9 / z);
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.beginPath(); ctx.moveTo(w, 0); ctx.lineTo(-w * 0.3, w * 0.55); ctx.lineTo(-w * 0.9, -w * 0.2); ctx.lineTo(-w * 0.1, -w * 0.6); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  // ── 버려진 틈 안쪽의 일렁이는 소용돌이 + 틈 모습의 글리치 (한 장의 셰이더로 그린다)
   const RIFT_FS = `
 precision highp float;
 uniform sampler2D uSpr, uMask;
@@ -1634,6 +1812,7 @@ void main(){
       if (g.x + e < vx0 || g.x - e > vx1 || g.y + e < vy0 || g.y - e > vy1) continue;
       drawGate(g, t);
     }
+    if (variant === "red" && !SKIP.has('specials')) { updateSmoke(t, dt); drawSmoke(t, z); }          // 틈 뒤에서 뿜어져 나오는 검은 기운
     if (!SKIP.has('specials')) for (const s of specials) {
       const e = rifts[12 + s.idx].S * s.scale * 3.6;
       if (s.x + e < vx0 || s.x - e > vx1 || s.y + e < vy0 || s.y - e > vy1) continue;
