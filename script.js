@@ -328,7 +328,6 @@
     const TRACKS = {
       main:     { src: "assets/audio/bgm.mp3", vol: 0.2 },
       vanguard: { src: "assets/audio/bgm-vanguard.mp3", vol: 0.26 },      // 라시안컷 : 뱅가드 입장 후
-      scarlet:  { src: "assets/audio/bgm-scarlet.mp3", vol: 0.09 },       // 라시안컷 : 적월 입장 후 (원곡이 main 보다 약 7dB 커서 그만큼 낮춰 맞췄다)
     };
     let trackName = "main";
     const curVol = () => TRACKS[trackName].vol;
@@ -453,7 +452,6 @@
   fruitList.slice(1).forEach((f) => {
     FRUITS[f.id] = { kicker: `FRUIT · ${f.id}`, title: `열매 ${f.id}`, desc: "아직 이야기가 정해지지 않은 열매입니다.", target: null, loading: LOADING_OF[f.id] };   // 입장할 곳은 아직 없어서 임시로 같은 맵으로 들어간다
   });
-  FRUITS["02"].bgm = "scarlet";                    // 적월 맵의 음악
   FRUITS["02"].mapVariant = "red";                 // 붉은 열매: 더 큰 붉은 맵 (붉은 소용돌이·검붉은 기류·불안정한 틈)
   FRUITS["02"].title = "라시안컷 : 적월";
   FRUITS["02"].desc = "라시안컷 : 적월, 멸망을 직시하는 허무의 왕좌.";
@@ -705,7 +703,7 @@
     if (FRUITS[CURRENT].locked) return;
     if (target) { Transition.play(() => { window.location.href = target; }); return; }   // 주소가 정해진 열매는 그대로 이동
     if (!MapView || !Loading || Loading.isBusy()) return;
-    Bgm.setTrack(FRUITS[CURRENT].bgm || "vanguard");      // 입장하면 그 열매 맵의 음악으로 (적월은 scarlet, 나머지는 뱅가드)
+    Bgm.setTrack(FRUITS[CURRENT].bgm || "vanguard");      // 입장하면 맵의 음악으로 (뱅가드·적월 모두 뱅가드 곡. 열매에 bgm 을 지정하면 그 곡)
     MapView.setVariant(FRUITS[CURRENT].mapVariant || "vanguard");      // 열매에 따라 열 맵을 고른다
     await Loading.run(async () => {
       await MapView.prepare();
