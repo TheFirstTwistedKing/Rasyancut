@@ -452,6 +452,7 @@
   fruitList.slice(1).forEach((f) => {
     FRUITS[f.id] = { kicker: `FRUIT · ${f.id}`, title: `열매 ${f.id}`, desc: "아직 이야기가 정해지지 않은 열매입니다.", target: null, loading: LOADING_OF[f.id] };   // 입장할 곳은 아직 없어서 임시로 같은 맵으로 들어간다
   });
+  FRUITS["02"].mapVariant = "red";                 // 붉은 열매: 더 큰 붉은 맵 (붉은 소용돌이·검붉은 기류·불안정한 틈)
   let CURRENT = "01";
   let active = fruitList[0];
 
@@ -701,6 +702,7 @@
     if (target) { Transition.play(() => { window.location.href = target; }); return; }   // 주소가 정해진 열매는 그대로 이동
     if (!MapView || !Loading || Loading.isBusy()) return;
     Bgm.setTrack("vanguard");                     // 입장하면 라시안컷 : 뱅가드의 음악으로
+    MapView.setVariant(FRUITS[CURRENT].mapVariant || "vanguard");      // 열매에 따라 열 맵을 고른다
     await Loading.run(async () => {
       await MapView.prepare();
       return { ready: () => MapView.show() };
