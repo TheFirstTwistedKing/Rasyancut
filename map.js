@@ -1163,7 +1163,7 @@ void main(){
 
   // ── 버려진 틈에서 우수수 뿜어져 나오는 검은 기운: 뭉게뭉게 번지는 연기 · 빠르게 뻗는 검은 촉수 · 튀어 나가는 검은 파편
   const smoke = [];
-  let smokeTex = null, smokeAcc = 0, smokeGush = 0, smokeNext = 1.5, smokeHeavy = 0;
+  let smokeTex = null, smokeAcc = 0, smokeGush = 0, smokeNext = 1.5, smokeHeavy = 0, smokeVis = 0;   // smokeVis: 셰이더로 넘기는 세기(부드럽게 따라가게 한다)
   function makeSmokeTex() {
     const N = 192, c = mk(N, N), g = c.getContext("2d");
     const lobes = [[0, 0, 0.5], [0.2, 0.08, 0.34], [-0.22, 0.05, 0.32], [0.04, -0.2, 0.3], [-0.06, 0.22, 0.3], [0.26, -0.14, 0.24], [-0.27, -0.12, 0.24]];
@@ -1202,7 +1202,7 @@ float smokeD(vec2 q){
   float fil = 1.0 - abs(2.0 * mix(fbm(s0 * 1.25 + 3.0), fbm(s1 * 1.25 + 3.0), cr) - 1.0);   // 가느다란 연기 올
   float d = n * 0.85 + 0.4 * pow(fil, 2.0) - 0.06 * r;
   float pulse = 0.5 + 0.5 * sin(r * 2.2 - uT * 3.0 + n * 5.0);       // 우수수 — 덩어리째 밀려 나오는 파동
-  d += (pulse - 0.5) * 0.2 + 0.16 * uGush;
+  d += (pulse - 0.5) * 0.2 + 0.1 * uGush;
   float dens = smoothstep(0.5, 0.86, d);
   dens *= 1.0 - smoothstep(3.0, 7.6, r);                             // 멀어질수록 흩어진다
   return dens * smoothstep(0.0, 0.5, r + 0.25);
@@ -1241,7 +1241,7 @@ void main(){
   function drawSmokeGL(s, t) {
     const sp = riftSpot(s), U = sp.hw, { gl, cv } = smokeGL;
     gl.viewport(0, 0, cv.width, cv.height);
-    gl.uniform1f(smokeGL.uT, t); gl.uniform1f(smokeGL.uGush, Math.min(1.5, smokeGush * 0.8 + smokeHeavy * 0.6)); gl.uniform1f(smokeGL.uSeed, s.phase * 3.0);
+    gl.uniform1f(smokeGL.uT, t); gl.uniform1f(smokeGL.uGush, smokeVis); gl.uniform1f(smokeGL.uSeed, s.phase * 3.0);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     ctx.globalAlpha = 1; ctx.drawImage(cv, sp.x - U * 8, sp.y - U * 8, U * 16, U * 16);
   }
@@ -1270,6 +1270,8 @@ void main(){
     dt = Math.min(dt, 0.06);
     smokeGush = Math.max(smokeGush, boltFlash * 0.9) * Math.exp(-dt * 1.5);
     smokeHeavy *= Math.exp(-dt * 2.2);
+    const tgt = Math.min(1, smokeGush * 0.8 + smokeHeavy * 0.6);
+    smokeVis += (tgt - smokeVis) * (1 - Math.exp(-dt * (tgt > smokeVis ? 3.5 : 1.4)));        // 번개가 쳐도 연기가 툭 튀지 않고 서서히 짙어졌다 가라앉는다
     const sp = riftSpot(s), viewR = Math.hypot(cw, ch) / 2 / cam.z;
     const near = Math.hypot(sp.x - cam.x, sp.y - cam.y) < viewR + 16000;
     if (near) {
