@@ -453,7 +453,7 @@ void main(){
     raysTex = [makeRays(1), makeRays(2)];
     if (!vgl && !vglTried) { vglTried = true; initVortexGL(); }
     if (!vgl && !bakes[0]) bakes[0] = await bakeSwirl(384, 1.7);
-    if (variant === "red") { if (!redTex) makeRedTex(); if (!ringGL && !ringTried) initRedRing(); }
+    if (variant === "red") { if (!redTex) makeRedTex(); if (!ringGL && !ringTried) initRedRing(); initRiftGL(); }
     buildMiniStatic(); await step();
     if (document.fonts && document.fonts.load) {
       try { await Promise.race([document.fonts.load('700 20px "Noto Serif KR"', "페이스리아의 차원의 틈"), new Promise((res) => setTimeout(res, 1500))]); } catch (_) { /* 기본 글꼴 */ }
@@ -1146,6 +1146,114 @@ void main(){
     ctx.restore();
   }
 
+  // ── 불안정한 틈 안쪽의 일렁이는 소용돌이 + 틈 모습의 글리치 (한 장의 셰이더로 그린다)
+  const RIFT_FS = `
+precision highp float;
+uniform sampler2D uSpr, uMask;
+uniform vec2 uRegion0, uRegionSize, uC, uHalf;
+uniform float uS, uT, uG, uFlash, uSeed;
+varying vec2 vUv;
+float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ v += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return v; }
+vec4 scene(vec2 uv){
+  vec2 px = uRegion0 + vec2(uv.x, 1.0 - uv.y) * uRegionSize;
+  vec2 suv = px / uS;
+  vec4 spr = texture2D(uSpr, suv);
+  float mk = texture2D(uMask, suv).r * step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
+  vec2 p = (px - uC) / uHalf;
+  // 일렁임: 소용돌이 좌표를 천천히 출렁이는 노이즈로 휘고, 반지름이 숨 쉬듯 흔들린다
+  vec2 w = vec2(fbm(p * 1.6 + vec2(0.0, uT * 0.35)), fbm(p * 1.6 + vec2(5.2, 1.3) - uT * 0.3)) - 0.5;
+  vec2 q = p + 0.38 * w + 0.05 * vec2(sin(p.y * 7.0 + uT * 3.0), cos(p.x * 6.0 - uT * 2.6));
+  float rr = length(q) * (1.0 + 0.07 * sin(atan(q.y, q.x) * 3.0 + uT * 2.1) + 0.04 * sin(atan(q.y, q.x) * 5.0 - uT * 3.3)) + 1e-3;
+  float aa = atan(q.y, q.x);
+  float depth = 0.55 / (rr + 0.12);                                // 중심으로 빨려 들어가는 깊이
+  float tw = aa + depth * 1.5 - uT * 0.9;                          // 깊을수록 더 비틀리는 나선
+  vec2 c = vec2(cos(tw), sin(tw));
+  float n1 = fbm(c * 1.9 + vec2(depth * 0.9, -uT * 0.5));
+  float n2 = fbm(c * 4.4 - vec2(depth * 1.6, uT * 0.7) + 3.1);
+  float arms = 0.5 + 0.5 * sin(4.0 * tw + n1 * 3.5);
+  float body = smoothstep(0.25, 0.85, n1 * 0.7 + n2 * 0.5) * (0.45 + 0.55 * arms);
+  float edge = smoothstep(0.5, 1.05, rr);
+  float core = exp(-rr * rr * 14.0);
+  vec3 col = vec3(0.03, 0.0, 0.008);
+  col += vec3(0.58, 0.03, 0.05) * body * 1.15 * (0.35 + 0.9 * (1.0 - edge));
+  col += vec3(1.0, 0.26, 0.12) * pow(body, 2.0) * arms * 0.9;
+  col += vec3(1.0, 0.55, 0.4) * core * (1.2 + 0.5 * sin(uT * 6.0) + uFlash);
+  col += vec3(1.0, 0.92, 0.88) * exp(-rr * rr * 90.0) * 1.6;
+  col += vec3(0.8, 0.1, 0.1) * pow(n2, 5.0) * 0.8 * (1.0 - edge);   // 소용돌이 속에서 번득이는 불씨
+  vec3 outc = spr.rgb + col * mk;                                 // 틈 그림의 어두운 속(불투명한 검정) 위에 소용돌이를 더해 얹는다
+  return vec4(outc, max(mk, spr.a));
+}
+void main(){
+  vec2 uv = vUv;
+  float g = uG;
+  // 글리치: 가로줄이 옆으로 밀리고, 큰 블록이 통째로 어긋나고, 가끔 화면이 말리며, RGB 가 갈라진다
+  float tk = floor(uT * mix(8.0, 32.0, g)), row = floor(uv.y * mix(14.0, 64.0, g));
+  float sl = step(1.0 - (0.07 + 0.55 * g), hash(vec2(row, tk + uSeed))) * (hash(vec2(row, tk + 9.0)) - 0.5) * 0.4 * g;
+  vec2 bl = floor(uv * vec2(5.0, 7.0));
+  vec2 boff = step(1.0 - 0.14 * g, hash(bl + tk * 3.7 + uSeed)) * (vec2(hash(bl + 1.7), hash(bl + 8.3)) - 0.5) * 0.34 * g;
+  float roll = g * g * step(0.82, hash(vec2(tk, 5.0 + uSeed))) * 0.18 * fract(uT * 1.7);
+  vec2 u2 = vec2(uv.x + sl + boff.x, fract(uv.y + roll) + boff.y);
+  float ab = 0.004 + 0.034 * g * hash(vec2(tk, 2.0 + uSeed));
+  vec4 a, b, c;
+  if (g > 0.03) { a = scene(u2 + vec2(ab, 0.0)); b = scene(u2); c = scene(u2 - vec2(ab, 0.0)); }
+  else { b = scene(u2); a = b; c = b; }
+  vec3 col = vec3(a.r, 0.5 * (b.g + c.g) + 0.25 * a.r * g, c.b + 0.55 * c.r * g);     // 어긋난 복사본이 푸른 가장자리로 남는다
+  float alpha = max(max(a.a, b.a), c.a);
+  col *= 0.9 + 0.1 * sin(vUv.y * 340.0);                                               // 주사선
+  float nz = hash(gl_FragCoord.xy + fract(uT) * 91.0);
+  col = mix(col, vec3(nz) * alpha, g * g * 0.22);                                      // 지지직 노이즈
+  col += vec3(0.7, 0.55, 0.55) * step(1.0 - 0.05 * g, hash(vec2(row, tk + 3.0 + uSeed))) * (0.4 + nz) * alpha;   // 하얀 노이즈 띠
+  float lost = step(1.0 - 0.2 * g * g, hash(vec2(tk, 7.0 + uSeed)));                   // 신호가 끊긴 프레임
+  col *= mix(1.0, 0.1, lost); alpha *= mix(1.0, 0.35, lost);
+  gl_FragColor = vec4(min(col, vec3(1.0)), clamp(alpha, 0.0, 1.0));
+}`;
+  let riftGL = null, riftGLTried = false;
+  function initRiftGL() {
+    const sp = rifts[12]; if (!sp) return;
+    try {
+      if (!riftGL && !riftGLTried) {
+        riftGLTried = true;
+        const cv = document.createElement("canvas");
+        const gl = cv.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: false, preserveDrawingBuffer: true });
+        if (!gl) return;
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const prog = gl.createProgram();
+        gl.attachShader(prog, sh(gl.VERTEX_SHADER, VORTEX_VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, RIFT_FS));
+        gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+        gl.useProgram(prog);
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+        const loc = gl.getAttribLocation(prog, "aPos"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        const U = {}; ["uSpr", "uMask", "uRegion0", "uRegionSize", "uC", "uHalf", "uS", "uT", "uG", "uFlash", "uSeed"].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
+        riftGL = { cv, gl, U, tex: [] };
+      }
+      if (!riftGL) return;
+      const { gl } = riftGL, S = sp.S;
+      // 틈 모양(다각형)을 흰색으로 채운 마스크: 이 안쪽에만 소용돌이가 보인다
+      const mk0 = mk(S, S), mg = mk0.getContext("2d"); mg.fillStyle = "#fff"; mg.beginPath();
+      sp.pts.forEach(([u, v], i) => (i ? mg.lineTo(u, v) : mg.moveTo(u, v))); mg.closePath(); mg.fill();
+      const up = (canvas, unit) => {
+        if (riftGL.tex[unit]) gl.deleteTexture(riftGL.tex[unit]);
+        const tx = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tx);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        riftGL.tex[unit] = tx;
+      };
+      up(sp.c, 0); up(mk0, 1);
+      // 틈이 차지하는 영역(스프라이트 좌표)만 그린다
+      const cx = sp.vc[0][0], cy = sp.vc[0][1], rx0 = Math.max(0, cx - sp.hw * 1.3), ry0 = Math.max(0, cy - sp.hh * 1.25);
+      const rw = Math.min(S - rx0, sp.hw * 2.6), rh = Math.min(S - ry0, sp.hh * 2.5);
+      riftGL.region = { x: rx0, y: ry0, w: rw, h: rh, cx, cy, hw: sp.hw, hh: sp.hh };
+      riftGL.cv.width = window.innerWidth < 760 ? 288 : 384; riftGL.cv.height = Math.max(64, Math.round(riftGL.cv.width * rh / rw));
+    } catch (e) { riftGL = null; console.warn("불안정한 틈(WebGL) 사용 불가 → 2D 로 대체:", e.message); }
+  }
+  const riftG = { next: 1.2, t0: -9, dur: 0, amp: 0 };       // 글리치 발작 상태
+
   function drawUnstableRift(s, t, z) {
     const sp = rifts[12]; if (!sp || !redBloom) return;
     const S = sp.S, k = s.scale, sz = S * k, W = (u, v) => [(u - S / 2) * k, (v - S / 2) * k];
@@ -1160,24 +1268,33 @@ void main(){
     bl(redBloom.cool, vx, vy, sz * 1.25, 0.26); bl(redBloom.hot, vx, vy, sz * 0.8, 0.34); bl(redBloom.core, vx, vy, sz * 0.4, 0.3 + 0.3 * boltFlash);
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
     const spx = sz * z * dpr;
-    ctx.drawImage(spx < S / 4 * 1.1 ? sp.mips[0] : spx < S / 2 * 1.1 ? sp.mips[1] : sp.c, -sz / 2, -sz / 2, sz, sz);
-    if (spx > 45) {                                                  // 틈 안쪽: 속이 비어 있는 어둠 속에서 붉은 에너지가 불안하게 일렁인다
-      ctx.save();
-      ctx.beginPath(); sp.pts.forEach(([u, v], i) => { const [x, y] = W(u, v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.clip();
-      ctx.fillStyle = "#000"; ctx.fillRect(-sz / 2, -sz / 2, sz, sz);
-      ctx.globalCompositeOperation = "lighter";
-      for (let i = 0; i < 6; i++) {
-        const a = t * (0.7 + i * 0.27) + i * 1.9, x = vx + Math.cos(a) * sp.hw * k * 0.42, y = vy + Math.sin(a * 1.3) * sp.hh * k * 0.5, rad = sp.hw * k * (0.55 + 0.22 * Math.sin(t * 3.1 + i));
-        const g = ctx.createRadialGradient(x, y, 0, x, y, rad); g.addColorStop(0, `rgba(255,${70 + 40 * (i % 2)},50,${0.34 * flick})`); g.addColorStop(1, "rgba(120,0,10,0)");
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill();
+    // 글리치 발작: 불규칙하게 찾아와 잠깐 심하게 일그러지고, 번개가 칠 때도 더 심해진다
+    if (t >= riftG.next) { riftG.t0 = t; riftG.dur = 0.12 + Math.random() * 0.45; riftG.amp = 0.45 + Math.random() * 0.55; riftG.next = t + 0.5 + Math.random() * 1.8; }
+    const burst = t - riftG.t0 < riftG.dur ? riftG.amp * (0.6 + 0.4 * Math.sin((t - riftG.t0) * 70)) : 0;
+    const glitch = clamp(0.05 + burst + boltFlash * 0.45, 0, 1);
+    if (riftGL && spx > 45) {
+      const { gl, cv, U, region: R } = riftGL;
+      gl.viewport(0, 0, cv.width, cv.height);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, riftGL.tex[0]); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, riftGL.tex[1]);
+      gl.uniform1i(U.uSpr, 0); gl.uniform1i(U.uMask, 1);
+      gl.uniform2f(U.uRegion0, R.x, R.y); gl.uniform2f(U.uRegionSize, R.w, R.h); gl.uniform2f(U.uC, R.cx, R.cy); gl.uniform2f(U.uHalf, R.hw, R.hh);
+      gl.uniform1f(U.uS, S); gl.uniform1f(U.uT, t); gl.uniform1f(U.uG, glitch); gl.uniform1f(U.uFlash, boltFlash * 0.8); gl.uniform1f(U.uSeed, s.phase * 7.0);
+      gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      ctx.drawImage(cv, (R.x - S / 2) * k, (R.y - S / 2) * k, R.w * k, R.h * k);
+    } else {
+      ctx.drawImage(spx < S / 4 * 1.1 ? sp.mips[0] : spx < S / 2 * 1.1 ? sp.mips[1] : sp.c, -sz / 2, -sz / 2, sz, sz);
+      if (spx > 45) {                                                  // WebGL 없음: 틈 안쪽에 붉은 에너지를 2D 로 일렁이게
+        ctx.save();
+        ctx.beginPath(); sp.pts.forEach(([u, v], i) => { const [x, y] = W(u, v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.clip();
+        ctx.fillStyle = "#000"; ctx.fillRect(-sz / 2, -sz / 2, sz, sz);
+        ctx.globalCompositeOperation = "lighter";
+        for (let i = 0; i < 6; i++) {
+          const a = t * (0.7 + i * 0.27) + i * 1.9, x = vx + Math.cos(a) * sp.hw * k * 0.42, y = vy + Math.sin(a * 1.3) * sp.hh * k * 0.5, rad = sp.hw * k * (0.55 + 0.22 * Math.sin(t * 3.1 + i));
+          const g = ctx.createRadialGradient(x, y, 0, x, y, rad); g.addColorStop(0, `rgba(255,${70 + 40 * (i % 2)},50,${0.34 * flick})`); g.addColorStop(1, "rgba(120,0,10,0)");
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill();
+        }
+        ctx.restore();
       }
-      ctx.lineJoin = "round"; ctx.strokeStyle = `rgba(255,200,190,${0.55 * flick})`; ctx.lineWidth = 2.2 / z;
-      for (let i = 0; i < 3; i++) {                                    // 틈 안에서 지직거리는 잔 번개
-        let x = vx + (Math.random() - 0.5) * sp.hw * k * 0.8, y = vy - sp.hh * k * 0.45; ctx.beginPath(); ctx.moveTo(x, y);
-        for (let q = 0; q < 7; q++) { x += (Math.random() - 0.5) * sp.hw * k * 0.35; y += sp.hh * k * 0.14; ctx.lineTo(x, y); }
-        ctx.stroke();
-      }
-      ctx.restore();
     }
     ctx.rotate(-s.rot);
     const fs = Math.max(18 / z, 30);
@@ -2154,6 +2271,6 @@ void main(){
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
   window.RasyancutMap = {
     prepare, show, hide, isOpen: () => open, isLocked: () => !!portal, setVariant, getVariant: () => variant,
-    _debug: { SKIP, getVq: () => vq, cam, gates: () => gates, specials: () => specials, get WORLD() { return WORLD; }, get R_MAP() { return R_MAP; }, MAX_SPEED, SANCT_R, flyTo, getBurn: () => burn, startBurn: () => startBurn(performance.now()), startPortal: () => startPortal(specials[0], performance.now()), setPortalQ: (q) => { portalQ = q; }, freezePortal: (ms) => { if (portal) portal.fixed = ms; }, hitSpecial, vortexWorld: () => vortexWorld(specials[0]), PT },
+    _debug: { SKIP, getVq: () => vq, cam, gates: () => gates, specials: () => specials, get WORLD() { return WORLD; }, get R_MAP() { return R_MAP; }, MAX_SPEED, SANCT_R, flyTo, getBurn: () => burn, startBurn: () => startBurn(performance.now()), startPortal: () => startPortal(specials[0], performance.now()), setPortalQ: (q) => { portalQ = q; }, freezePortal: (ms) => { if (portal) portal.fixed = ms; }, hitSpecial, vortexWorld: () => vortexWorld(specials[0]), PT, forceRiftGlitch: (on) => { if (on) { riftG.t0 = -1; riftG.dur = 1e9; riftG.amp = 0.9; riftG.next = 1e9; } else { riftG.dur = 0; riftG.next = 0; } } },
   };
 })();
