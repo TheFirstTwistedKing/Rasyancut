@@ -907,9 +907,9 @@ void main(){
       const c = mk(S, S), g = c.getContext("2d"), gr = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
       stops.forEach(([o, col]) => gr.addColorStop(o, col)); g.fillStyle = gr; g.fillRect(0, 0, S, S); return c;
     };
-    const halo = glow([[0, "rgba(220,24,26,0.5)"], [0.06, "rgba(190,16,24,0.32)"], [0.16, "rgba(145,8,20,0.17)"], [0.34, "rgba(100,4,14,0.08)"], [0.6, "rgba(70,2,10,0.025)"], [1, "rgba(50,0,8,0)"]]);
-    const mid = glow([[0, "rgba(238,64,54,0.6)"], [0.08, "rgba(214,36,40,0.46)"], [0.2, "rgba(168,14,28,0.28)"], [0.42, "rgba(118,7,20,0.12)"], [0.7, "rgba(80,2,12,0.035)"], [1, "rgba(60,0,10,0)"]]);
-    const core = glow([[0, "rgba(255,228,218,0.96)"], [0.05, "rgba(255,160,138,0.8)"], [0.14, "rgba(236,62,56,0.52)"], [0.34, "rgba(182,16,30,0.23)"], [0.66, "rgba(120,6,20,0.06)"], [1, "rgba(90,0,14,0)"]]);
+    const halo = glow([[0, "rgba(255,40,30,0.5)"], [0.06, "rgba(240,30,28,0.34)"], [0.16, "rgba(190,14,24,0.18)"], [0.34, "rgba(130,6,16,0.08)"], [0.6, "rgba(90,2,10,0.025)"], [1, "rgba(70,0,8,0)"]]);
+    const mid = glow([[0, "rgba(255,110,90,0.8)"], [0.08, "rgba(255,70,55,0.6)"], [0.2, "rgba(220,28,34,0.34)"], [0.42, "rgba(150,10,22,0.14)"], [0.7, "rgba(100,3,12,0.04)"], [1, "rgba(80,0,10,0)"]]);
+    const core = glow([[0, "rgba(255,246,240,1)"], [0.07, "rgba(255,200,185,0.92)"], [0.18, "rgba(255,110,90,0.62)"], [0.38, "rgba(225,36,40,0.27)"], [0.68, "rgba(150,8,22,0.07)"], [1, "rgba(110,0,14,0)"]]);
     // 빛줄기: 중심에서 뻗는 가늘고 길이가 제각각인 광선 (붉은 → 분홍빛 흰색)
     const rays = (seed, n) => {
       const c = mk(1024, 1024), g = c.getContext("2d"), r = rng32(seed);
@@ -1013,13 +1013,13 @@ void main(){
     const rd = redTex.rad;
     ctx.save(); ctx.translate(CX, CY); ctx.globalCompositeOperation = "lighter";
     const bl = (tex, rad, a) => { ctx.globalAlpha = Math.min(1, a * pulse); ctx.drawImage(tex, -rad, -rad, rad * 2, rad * 2); };
-    bl(rd.halo, R * 12, 0.72);
-    bl(rd.mid, R * 5.2, 0.55);
-    ctx.save(); ctx.rotate(t * 0.035); bl(rd.rays[0], R * 15, 0.5); ctx.restore();             // 천천히 서로 반대로 도는 두 겹의 빛줄기
-    ctx.save(); ctx.rotate(-t * 0.024 + 1.1); bl(rd.rays[1], R * 11, 0.4); ctx.restore();
-    ctx.globalAlpha = 0.42 * pulse; ctx.drawImage(rd.flare, -R * 9, -R * 0.6, R * 18, R * 1.2);                     // 가로 렌즈 플레어
-    ctx.save(); ctx.rotate(Math.PI / 2); ctx.globalAlpha = 0.22 * pulse; ctx.drawImage(rd.flare, -R * 5, -R * 0.42, R * 10, R * 0.84); ctx.restore();
-    bl(rd.core, R * 1.7, 0.9);
+    bl(rd.halo, R * 12, 0.9);
+    bl(rd.mid, R * 5.2, 0.85);
+    ctx.save(); ctx.rotate(t * 0.035); bl(rd.rays[0], R * 15, 0.7); ctx.restore();             // 천천히 서로 반대로 도는 두 겹의 빛줄기
+    ctx.save(); ctx.rotate(-t * 0.024 + 1.1); bl(rd.rays[1], R * 11, 0.55); ctx.restore();
+    ctx.globalAlpha = 0.55 * pulse; ctx.drawImage(rd.flare, -R * 9, -R * 0.6, R * 18, R * 1.2);                     // 가로 렌즈 플레어
+    ctx.save(); ctx.rotate(Math.PI / 2); ctx.globalAlpha = 0.3 * pulse; ctx.drawImage(rd.flare, -R * 5, -R * 0.42, R * 10, R * 0.84); ctx.restore();
+    bl(rd.core, R * 2.3, 1);                                                                       // 성역 한가운데의 별이 빛에 묻힐 만큼 눈부시게 (의도한 연출)
     ctx.restore();
   }
 
