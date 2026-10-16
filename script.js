@@ -276,7 +276,7 @@
   // 지연 없이 재생되도록 Web Audio 로 미리 디코딩해 둔다. (브라우저 정책상 첫 클릭/키 입력 뒤에 준비됨)
   // fetch 가 막히는 환경(파일을 직접 연 경우 등)에서는 일반 Audio 로 대신 재생한다.
   const Sfx = (() => {
-    const URL_ = "assets/sfx/relic-awaken.wav?v=3";   // 소리를 바꾸면 v 숫자를 올려 캐시를 갱신
+    const URL_ = "assets/sfx/zoom-in.wav?v=1";   // 소리를 바꾸면 v 숫자를 올려 캐시를 갱신
     let ctx = null, buf = null, raw = null;
     const fallback = new Audio(URL_);
     fallback.preload = "auto";
@@ -611,7 +611,7 @@
     fruitList.forEach((o) => o.unit.classList.toggle("active", o === f));
     themePanel(f);
     camMode = "zooming";
-    Sfx.play();                                   // 유물이 깨어나는 소리
+    Sfx.play();                                   // 화면이 열매 안으로 빨려 들어가는 소리 (확대 연출 1.5초에 맞춰 도착할 때 울림)
     Bgm.duck();                                   // 배경음악을 잠깐 낮춰 효과음이 돋보이게
     stage.classList.add("lite", "zoomed", "zooming");   // lite: 확대 중에는 가벼운 나무로 교체
     active.fx.startWaves();
