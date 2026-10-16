@@ -453,6 +453,8 @@
     FRUITS[f.id] = { kicker: `FRUIT · ${f.id}`, title: `열매 ${f.id}`, desc: "아직 이야기가 정해지지 않은 열매입니다.", target: null, loading: LOADING_OF[f.id] };   // 입장할 곳은 아직 없어서 임시로 같은 맵으로 들어간다
   });
   FRUITS["02"].mapVariant = "red";                 // 붉은 열매: 더 큰 붉은 맵 (붉은 소용돌이·검붉은 기류·불안정한 틈)
+  FRUITS["02"].title = "라시안컷 : 적월";
+  FRUITS["02"].desc = "라시안컷 : 적월, 멸망을 직시하는 허무의 왕좌.";
   let CURRENT = "01";
   let active = fruitList[0];
 
