@@ -166,76 +166,81 @@
   }
 
 
-  /** 버려진 차원의 틈: 세로로 찢긴 상처(makeWound)와 달리, 가로로 넓게 부서져 내린 구멍.
-   *  유리가 깨진 듯 직선으로 꺾인 가장자리에 뾰족한 파편이 돋고, 떨어져 나간 조각들이 둥둥 떠 있으며, 부서진 바깥 막과 직선의 금이 사방으로 뻗는다. */
+  /** 버려진 차원의 틈: 세로 상처(makeWound)나 대칭적인 모양과 달리, 한쪽으로 길게 비스듬히 갈라진 파단면.
+   *  중심선이 구불구불 휘고 한쪽에 불룩한 부분이 있는 비대칭 윤곽, 프랙털로 부서진 날카로운 가장자리, 끝에서 길게 이어지는 금,
+   *  가장자리에서 떨어져 나온 얇은 파편 — 유리나 암석이 실제로 쪼개질 때의 모양을 따른다. */
   function makeBrokenRift(seed, tint, S) {
     const r = rng32(seed), u = S / 512, cx = S / 2, cy = S / 2, gl = tint.glow, rim = tint.rim;
-    const rx = S * 0.35, ry = S * 0.26, tilt = -0.2;                    // 가로로 넓고 살짝 기울어진 구멍
-    const nV = 13, base = [];
-    for (let i = 0; i < nV; i++) {
-      const th = (i + (r() - 0.5) * 0.5) * Math.PI * 2 / nV;
-      const f = i % 2 ? 0.52 + r() * 0.16 : (r() < 0.28 ? 1.12 + r() * 0.2 : 0.8 + r() * 0.2);   // 안으로 파인 곳과 뾰족하게 솟은 곳이 번갈아 나온다
-      base.push([th, f]);
-    }
-    const tr = (th, f) => { const x = Math.cos(th) * rx * f, y = Math.sin(th) * ry * f; return [cx + x * Math.cos(tilt) - y * Math.sin(tilt), cy + x * Math.sin(tilt) + y * Math.cos(tilt)]; };
-    const pts = [];
-    base.forEach(([th, f], i) => {                                      // 모서리 사이에 한 번 더 꺾인 점을 넣어 직선 파단면처럼 만든다
-      pts.push(tr(th, f));
-      const [th2, f2] = base[(i + 1) % nV], thm = th2 > th ? (th + th2) / 2 : (th + th2 + Math.PI * 2) / 2, fm = (f + f2) / 2 * (0.9 + r() * 0.16);
-      pts.push(tr(thm, fm));
-    });
+    const ax = -0.4, L = S * 0.4, Wmax = S * 0.115;                      // 기울기(약 -23°), 반 길이, 최대 반폭
+    const ca = Math.cos(ax), sa = Math.sin(ax);
+    const mkN = (n) => { const a = []; for (let i = 0; i < n; i++) a.push(r() * 2 - 1); return (t) => { const x = t * (n - 1), i = Math.floor(x), f = x - i, q = f * f * (3 - 2 * f); return a[i] * (1 - q) + a[Math.min(n - 1, i + 1)] * q; }; };
+    const wander = mkN(6), wTop = mkN(7), wBot = mkN(7);
+    // 축 좌표(t: 0~1, n: 축에 수직) → 캔버스
+    const P = (t, n) => { const x = (t - 0.5) * 2 * L, y = n + wander(t) * S * 0.055; return [cx + x * ca - y * sa, cy + x * sa + y * ca]; };
+    const prof = (t) => Math.pow(Math.sin(Math.PI * Math.pow(t, 0.72)), 0.8);       // 한쪽(t≈0.4)이 불룩하고 양 끝은 날카롭게 모인다
+    const frac = (a, b, depth, amp) => {                                              // 중점 변위: 곧은 직선 조각들이 꺾이며 부서진 가장자리
+      if (depth === 0) return [];
+      const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1, o = (r() - 0.5) * 2 * amp * l;
+      m[0] += -dy / l * o; m[1] += dx / l * o;
+      return [...frac(a, m, depth - 1, amp * 0.78), m, ...frac(m, b, depth - 1, amp * 0.78)];
+    };
+    const edge = (sgn, wn) => {
+      const ctl = []; const K = 9;
+      for (let k = 0; k <= K; k++) { const t = k / K; ctl.push(P(t, sgn * Wmax * prof(t) * (0.7 + 0.5 * (wn(t) * 0.5 + 0.5) + (k % 2 ? -0.12 : 0.12) * r()))); }
+      const out = [ctl[0]];
+      for (let k = 0; k < K; k++) { out.push(...frac(ctl[k], ctl[k + 1], 4, 0.36), ctl[k + 1]); }
+      return out;
+    };
+    const top = edge(-1, wTop), bot = edge(1, wBot);
+    const pts = [...top, ...bot.slice(0, -1).reverse()];
     let mx = 0, my = 0; pts.forEach(([x, y]) => { mx = Math.max(mx, Math.abs(x - cx)); my = Math.max(my, Math.abs(y - cy)); });
-    const mkPath = (p, k) => { const pa = new Path2D(); p.forEach(([x, y], i) => { const X = cx + (x - cx) * k, Y = cy + (y - cy) * k; i ? pa.lineTo(X, Y) : pa.moveTo(X, Y); }); pa.closePath(); return pa; };
-    const path = mkPath(pts, 1);
+    const path = new Path2D(); pts.forEach(([x, y], i) => (i ? path.lineTo(x, y) : path.moveTo(x, y))); path.closePath();
 
     const c = mk(S, S), g = c.getContext("2d");
-    g.lineJoin = "miter"; g.lineCap = "butt"; g.miterLimit = 6;
-    // 1) 직선으로 뻗는 금(깨진 유리): 꺾인 모서리마다 곧게 뻗고 한 번씩 갈라진다
+    g.lineJoin = "miter"; g.lineCap = "butt"; g.miterLimit = 5;
+    // 1) 금: 양 끝에서 길게 이어지고, 가장자리에서 몇 가닥 곁으로 뻗는다 (사방으로 퍼지지 않는다)
     g.strokeStyle = rim;
     const crack = (x, y, ang, len, w, a, depth) => {
-      let px = x, py = y; const segs = 2 + ((r() * 3) | 0);
+      let px = x, py = y; const segs = 3 + ((r() * 3) | 0);
       for (let i = 0; i < segs; i++) {
-        ang += (r() - 0.5) * 0.5; const l = len / segs, nx = px + Math.cos(ang) * l, ny = py + Math.sin(ang) * l, f = 1 - i / segs;
-        g.globalAlpha = a * f; g.lineWidth = Math.max(0.5, w * (0.4 + 0.6 * f)); g.beginPath(); g.moveTo(px, py); g.lineTo(nx, ny); g.stroke();
-        if (depth < 1 && r() < 0.4) crack(nx, ny, ang + (r() < 0.5 ? -1 : 1) * (0.7 + r() * 0.5), len * 0.5 * f, w * 0.7, a * 0.8, depth + 1);
+        ang += (r() - 0.5) * 0.45; const l = len / segs * (0.7 + r() * 0.6), nx = px + Math.cos(ang) * l, ny = py + Math.sin(ang) * l, f = 1 - i / segs;
+        g.globalAlpha = a * f; g.lineWidth = Math.max(0.5, w * (0.35 + 0.65 * f)); g.beginPath(); g.moveTo(px, py); g.lineTo(nx, ny); g.stroke();
+        if (depth < 2 && r() < 0.3) crack(nx, ny, ang + (r() < 0.5 ? -1 : 1) * (0.5 + r() * 0.5), len * 0.4 * f, w * 0.7, a * 0.8, depth + 1);
         px = nx; py = ny;
       }
     };
-    for (let i = 0; i < pts.length; i += 2) {
-      const [x, y] = pts[i], a = Math.atan2(y - cy, x - cx);
-      crack(x, y, a + (r() - 0.5) * 0.4, S * (0.07 + r() * 0.17), (1 + r() * 1.3) * u * 1.6, 0.4 + r() * 0.35, 0);
+    for (const [t, dir] of [[0, Math.PI], [1, 0]]) { const [x, y] = P(t, 0); for (let i = 0; i < 2; i++) crack(x, y, ax + dir + (r() - 0.5) * 0.35, S * (0.09 + r() * 0.12), (1.3 + r()) * u * 1.6, 0.6, 0); }
+    for (let i = 0; i < 9; i++) {
+      const p = pts[(r() * pts.length) | 0], a0 = Math.atan2(p[1] - cy, p[0] - cx) + (r() - 0.5) * 0.9;
+      crack(p[0], p[1], a0, S * (0.04 + r() * 0.09), (0.8 + r() * 0.9) * u * 1.6, 0.3 + r() * 0.3, 1);
     }
     g.globalAlpha = 1;
-    // 2) 바깥으로 번지는 빛
-    g.save(); g.shadowColor = `rgba(${gl},0.9)`; g.shadowBlur = S * 0.09; g.fillStyle = `rgba(${gl},0.36)`; g.fill(path);
-    g.shadowBlur = S * 0.035; g.fillStyle = rim; g.globalAlpha = 0.45; g.fill(path); g.restore();
-    // 3) 부서진 바깥 막: 끊어진 점선 모양의 더 큰 윤곽
-    g.save(); g.setLineDash([S * 0.05, S * 0.016, S * 0.012, S * 0.022, S * 0.03, S * 0.014]);
-    g.strokeStyle = rim; g.globalAlpha = 0.5; g.lineWidth = 1.4 * u; g.stroke(mkPath(pts.map(([x, y]) => [x + (r() - 0.5) * S * 0.03, y + (r() - 0.5) * S * 0.03]), 1.13)); g.restore();
-    // 4) 입술: 날카롭게 꺾인 두꺼운 가장자리 → 밝은 능선
-    g.save(); g.strokeStyle = `rgba(${gl},0.5)`; g.lineWidth = S * 0.03; g.stroke(path);
-    g.strokeStyle = rim; g.globalAlpha = 0.92; g.lineWidth = S * 0.011; g.stroke(path); g.restore();
-    // 5) 속: 깊은 어둠
+    // 2) 번지는 빛
+    g.save(); g.shadowColor = `rgba(${gl},0.9)`; g.shadowBlur = S * 0.08; g.fillStyle = `rgba(${gl},0.34)`; g.fill(path);
+    g.shadowBlur = S * 0.03; g.fillStyle = rim; g.globalAlpha = 0.4; g.fill(path); g.restore();
+    // 3) 입술: 날카롭게 꺾인 두꺼운 가장자리 → 밝은 능선
+    g.save(); g.strokeStyle = `rgba(${gl},0.5)`; g.lineWidth = S * 0.026; g.stroke(path);
+    g.strokeStyle = rim; g.globalAlpha = 0.9; g.lineWidth = S * 0.009; g.stroke(path); g.restore();
+    // 4) 속: 깊은 어둠
     g.fillStyle = "#000"; g.fill(path);
     g.save(); g.clip(path);
     const gr = g.createRadialGradient(cx, cy, 0, cx, cy, Math.max(mx, my));
     gr.addColorStop(0, `rgba(${gl},0.16)`); gr.addColorStop(0.55, `rgba(${gl},0.05)`); gr.addColorStop(1, "rgba(0,0,0,0)");
     g.fillStyle = gr; g.fillRect(0, 0, S, S);
-    g.strokeStyle = "rgba(0,0,0,0.92)"; g.lineWidth = S * 0.06; g.shadowColor = "#000"; g.shadowBlur = S * 0.05; g.stroke(path);   // 입술이 드리우는 그림자
+    g.strokeStyle = "rgba(0,0,0,0.92)"; g.lineWidth = S * 0.05; g.shadowColor = "#000"; g.shadowBlur = S * 0.04; g.stroke(path);
     g.restore();
-    // 6) 떨어져 나가 둥둥 떠 있는 파편들
-    g.shadowBlur = 0; g.lineJoin = "miter";
-    for (let i = 0; i < 16; i++) {
-      const th = r() * Math.PI * 2, d = 1.22 + r() * 0.5, x = cx + Math.cos(th) * mx * d, y = cy + Math.sin(th) * my * d * 1.05;
-      if (Math.abs(x - cx) > S * 0.46 || Math.abs(y - cy) > S * 0.46) continue;
-      const sz = S * (0.012 + r() * r() * 0.05), rot = r() * 6.28, nvx = 3 + ((r() * 2) | 0);
-      g.save(); g.translate(x, y); g.rotate(rot); g.beginPath();
-      for (let k = 0; k < nvx; k++) { const a = k * Math.PI * 2 / nvx + (r() - 0.5) * 0.8, rr = sz * (0.55 + r() * 0.7); k ? g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); }
-      g.closePath(); g.shadowColor = `rgba(${gl},0.8)`; g.shadowBlur = S * 0.02; g.fillStyle = "#020003"; g.fill();
-      g.shadowBlur = 0; g.strokeStyle = rim; g.globalAlpha = 0.45 + r() * 0.45; g.lineWidth = Math.max(0.8, sz * 0.12); g.stroke(); g.restore();
+    // 5) 가장자리에서 떨어져 나온 얇은 파편 (축 방향으로 길쭉하게)
+    g.shadowBlur = 0;
+    for (let i = 0; i < 8; i++) {
+      const p = pts[(r() * pts.length) | 0], off = S * (0.025 + r() * 0.06), a0 = Math.atan2(p[1] - cy, p[0] - cx);
+      const x = p[0] + Math.cos(a0) * off, y = p[1] + Math.sin(a0) * off; if (Math.abs(x - cx) > S * 0.47 || Math.abs(y - cy) > S * 0.47) continue;
+      const len = S * (0.014 + r() * r() * 0.05), wd = len * (0.18 + r() * 0.2), rot = ax + (r() - 0.5) * 0.7;
+      g.save(); g.translate(x, y); g.rotate(rot); g.beginPath(); g.moveTo(len, 0); g.lineTo(-len * 0.25, wd); g.lineTo(-len, -wd * 0.3); g.lineTo(-len * 0.2, -wd); g.closePath();
+      g.shadowColor = `rgba(${gl},0.8)`; g.shadowBlur = S * 0.018; g.fillStyle = "#020003"; g.fill(); g.shadowBlur = 0;
+      g.strokeStyle = rim; g.globalAlpha = 0.5 + r() * 0.4; g.lineWidth = Math.max(0.8, wd * 0.25); g.stroke(); g.restore();
     }
     g.globalAlpha = 1;
-    return { c, S, pts, cx, cy, hw: mx * 1.08, hh: my * 1.08, big: true, vc: [[cx, cy]], vr: 0.4 * S };
+    return { c, S, pts, cx, cy, ax, hw: mx * 1.1, hh: my * 1.1, big: true, vc: [[cx, cy]], vr: 0.4 * S };
   }
 
   function makeGlow(rgb) {
@@ -1257,7 +1262,7 @@ void main(){
   // 틈 쪽을 향한 면에는 붉은 림 라이트, 연기 속에는 안쪽 빛이 비쳐 번진다 (이미지: 어둠 속에서 붉은 빛을 머금은 검은 연기)
   const SMOKE_FS = `
 precision highp float;
-uniform float uT, uGush, uSeed;
+uniform float uT, uGush, uSeed, uAng;
 varying vec2 vUv;
 float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -1268,7 +1273,7 @@ float smokeD(vec2 q){
   vec2 dir = q / (r + 0.02);
   vec2 w = vec2(fbm(q * 0.45 + vec2(uSeed, -uT * 0.07)), fbm(q * 0.45 + vec2(5.2 + uSeed, 1.3) + uT * 0.06)) - 0.5;
   vec2 a = q + w * 3.0;                                              // 굽이치는 흐름
-  vec2 vel = dir + vec2(-dir.y, dir.x) * 0.4 + w * 1.2;              // 바깥으로 흐르며 살짝 소용돌이친다
+  vec2 vel = dir * 0.85 + vec2(-dir.y, dir.x) * 0.3 + w * 1.6;              // 바깥으로 흐르며 살짝 소용돌이친다
   float ph0 = fract(uT * 0.17), ph1 = fract(uT * 0.17 + 0.5), cr = abs(2.0 * ph0 - 1.0);   // 플로우맵: 늘어지지 않고 계속 흘러나간다
   vec2 s0 = a - vel * ph0 * 4.2, s1 = a - vel * ph1 * 4.2 + 7.3;
   float n = mix(fbm(s0 * 0.6), fbm(s1 * 0.6), cr);
@@ -1281,7 +1286,9 @@ float smokeD(vec2 q){
   return dens * smoothstep(0.0, 0.5, r + 0.25);
 }
 void main(){
-  vec2 p = (vUv * 2.0 - 1.0) * 8.0;
+  vec2 p0 = (vUv * 2.0 - 1.0) * 8.0;
+  float ca = cos(uAng), sa = sin(uAng);
+  vec2 p = vec2(p0.x * ca + p0.y * sa, -p0.x * sa + p0.y * ca) * vec2(0.62, 1.25);   // 균열의 방향을 따라 길쭉하게 퍼진다
   float r = length(p);
   float d = smokeD(p);
   float dIn = smokeD(p - normalize(p + 1e-3) * 0.11);                // 틈 쪽으로 조금 떨어진 곳의 농도
@@ -1308,13 +1315,13 @@ void main(){
       const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
       const loc = gl.getAttribLocation(prog, "aPos"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-      smokeGL = { cv, gl, uT: gl.getUniformLocation(prog, "uT"), uGush: gl.getUniformLocation(prog, "uGush"), uSeed: gl.getUniformLocation(prog, "uSeed") };
+      smokeGL = { cv, gl, uT: gl.getUniformLocation(prog, "uT"), uGush: gl.getUniformLocation(prog, "uGush"), uSeed: gl.getUniformLocation(prog, "uSeed"), uAng: gl.getUniformLocation(prog, "uAng") };
     } catch (e) { smokeGL = null; console.warn("검은 연기(WebGL) 사용 불가 → 입자로 대체:", e.message); }
   }
   function drawSmokeGL(s, t) {
     const sp = riftSpot(s), U = sp.hw, { gl, cv } = smokeGL;
     gl.viewport(0, 0, cv.width, cv.height);
-    gl.uniform1f(smokeGL.uT, t); gl.uniform1f(smokeGL.uGush, smokeVis); gl.uniform1f(smokeGL.uSeed, s.phase * 3.0);
+    gl.uniform1f(smokeGL.uT, t); gl.uniform1f(smokeGL.uGush, smokeVis); gl.uniform1f(smokeGL.uSeed, s.phase * 3.0); gl.uniform1f(smokeGL.uAng, -(s.rot + (rifts[12].ax || 0)));
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     ctx.globalAlpha = 1; ctx.drawImage(cv, sp.x - U * 8, sp.y - U * 8, U * 16, U * 16);
   }
@@ -1377,8 +1384,8 @@ void main(){
     const s0 = specials[0];
     if (s0 && redBloom) {                                                // 틈 주변에 번진 검붉은 안개: 이게 있어야 까만 기운이 윤곽으로 보인다
       const sp = riftSpot(s0);
-      ctx.globalAlpha = 0.62; ctx.drawImage(redBloom.cool, sp.x - sp.hw * 8, sp.y - sp.hw * 8, sp.hw * 16, sp.hw * 16);
-      ctx.globalAlpha = 0.5; ctx.drawImage(redBloom.hot, sp.x - sp.hw * 5, sp.y - sp.hw * 5, sp.hw * 10, sp.hw * 10);
+      ctx.globalAlpha = 0.55; ctx.drawImage(redBloom.cool, sp.x - sp.hw * 8, sp.y - sp.hw * 8, sp.hw * 16, sp.hw * 16);
+      ctx.globalAlpha = 0.26; ctx.drawImage(redBloom.hot, sp.x - sp.hw * 5, sp.y - sp.hw * 5, sp.hw * 10, sp.hw * 10);
     }
     for (const p of smoke) {
       if (p.k !== 0) continue;
@@ -1405,9 +1412,9 @@ void main(){
         ctx.arc(hx, hy, ww, Math.atan2(-ny, -nx), Math.atan2(ny, nx), true); ctx.fill();
       } else {
         const env = Math.min(1, f / 0.05) * (1 - f * f), w = p.w;
-        ctx.globalAlpha = 0.95 * env; ctx.fillStyle = "#030004"; ctx.strokeStyle = `rgba(210,40,46,${0.7 * env})`; ctx.lineWidth = Math.max(w * 0.22, 0.9 / z);
+        ctx.globalAlpha = 0.95 * env; ctx.fillStyle = "#030004"; ctx.strokeStyle = `rgba(190,34,40,${0.4 * env})`; ctx.lineWidth = Math.max(w * 0.1, 0.7 / z);
         ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
-        ctx.beginPath(); ctx.moveTo(w, 0); ctx.lineTo(-w * 0.3, w * 0.55); ctx.lineTo(-w * 0.9, -w * 0.2); ctx.lineTo(-w * 0.1, -w * 0.6); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+        ctx.beginPath(); ctx.moveTo(w * 2.2, 0); ctx.lineTo(-w * 0.5, w * 0.5); ctx.lineTo(-w * 2.0, -w * 0.12); ctx.lineTo(-w * 0.3, -w * 0.42); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
       }
     }
     ctx.restore();
