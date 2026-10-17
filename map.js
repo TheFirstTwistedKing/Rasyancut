@@ -1387,10 +1387,10 @@ void main(){
   // 작고 많은 차원의 틈(관문) 안쪽에 3초마다 눈이 떠서 2초 동안 머문다. 뜬 눈을 누르면:
   //   ① 카메라가 성역으로 날아가고  ② 성역의 경계가 폭발하며  ③ 빛(위)과 어둠(아래)이 폭발한 자리로 모여들고  ④ 붉은 소용돌이가 피어난다.
   const EYE_PERIOD = 3, EYE_OPEN = 2, EYE_K = 0.68;
-  let eyeChance = 0.01;                                                    // 관문 하나가 3초 주기마다 눈을 뜰 확률 (1%)                                   // 3초마다 뜨고 2초 동안 유지
+  let eyeChance = 1;                                                       // 관문 하나가 3초 주기마다 눈을 뜰 확률 (1 = 모든 주기에 뜬다. 낮추려면 이 값만 바꾼다)                                   // 3초마다 뜨고 2초 동안 유지
   const eyeOpenAmt = (g, t) => {
     const x = t + g.phase / 6.2832 * EYE_PERIOD, cyc = Math.floor(x / EYE_PERIOD), u = x - cyc * EYE_PERIOD;   // 관문마다 주기의 시작 시각이 다르다
-    if (u >= EYE_OPEN || hash2(g.i, cyc, 91) >= eyeChance) return 0;     // 주기마다 1% 확률로만 눈이 뜬다
+    if (u >= EYE_OPEN || hash2(g.i, cyc, 91) >= eyeChance) return 0;     // 주기마다 eyeChance 확률로 눈이 뜬다
     return smooth01(0, 0.34, u) * (1 - smooth01(EYE_OPEN - 0.3, EYE_OPEN, u));
   };
   const EW = 320, EH = 200;
