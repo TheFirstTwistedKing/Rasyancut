@@ -1506,10 +1506,13 @@ void main(){
   let awaken = null;                    // 진행 중인 연출 {start, gate, flew, boomed, pushed, ignited, ...}
   let awakened = false;                 // 붉은 소용돌이가 생겼는가 (맵을 닫으면 처음 상태로)
   let spinAcc = 0, shakeAmp = 0;
+  const phoneView = () => cw < 760;                                       // 좁은 화면(휴대폰)
+  const awkZoom = (z) => z * (phoneView() ? 0.6 : 1);                      // 휴대폰은 화면이 작아 같은 배율이면 경계가 화면을 넘쳐 터지는 모습이 안 보이므로 더 멀리서 본다
+  const buzz = (p) => { try { if (navigator.vibrate) navigator.vibrate(p); } catch (_) { /* 진동 미지원 */ } };   // 진동(안드로이드 등)
   const AWK = { fly: 0.35, flyMs: 2650, boom: 3.0, conv0: 3.4, conv1: 7.0, ignite: 7.25, done: 9.9 };
   const awx = { debris: [], waves: [], puffs: [], sparks: [], stars: [], bolts: [], flash: 0 };
   const awxClear = () => { awx.debris.length = awx.waves.length = awx.puffs.length = awx.sparks.length = awx.stars.length = awx.bolts.length = 0; };
-  const AWAKEN_SFX = "assets/sfx/awaken.wav?v=1";
+  const AWAKEN_SFX = "assets/sfx/awaken.wav?v=2";
   function startAwaken(g, now) {
     if (awaken || burn || portal) return;
     awaken = { start: now, gate: g, flew: false, boomed: false, pushed: false, ignited: false, q: 0 };
@@ -1561,7 +1564,7 @@ void main(){
       const a = rnd() * 6.2832, sp = 1800 + Math.pow(rnd(), 1.6) * 16000, c = rnd();
       awx.stars.push({ x: Math.cos(a) * R * 0.2 * rnd(), y: Math.sin(a) * R * 0.2 * rnd(), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, age: 0, life: 1.3 + rnd() * 2.1, w: 0.7 + rnd() * 1.8, c });
     }
-    awx.flash = 1; shakeAmp = 30;
+    awx.flash = 1; shakeAmp = phoneView() ? 38 : 30;
   }
   /** 빛과 어둠이 모여드는 동안 사방에서 중심으로 꽂히는 번개: 위쪽에서는 하얗게 빛나는 번개, 아래쪽에서는 붉게 타는 검은 번개 */
   function spawnConvBolt(ta, conv) {
@@ -1577,7 +1580,7 @@ void main(){
     for (let k = 0; k < 9; k++) { const b = rnd() * 6.2832, sp = 500 + rnd() * 1500; awx.sparks.push({ x: x1, y: y1, vx: Math.cos(b) * sp, vy: Math.sin(b) * sp, age: 0, life: 0.3 + rnd() * 0.5 }); }
     const sfx = window.RasyancutSfx;
     if (sfx && sfx.playAt && ta - (awaken.lastSnd || -9) > 0.5 && rnd() < 0.8) {                      // 쿵·쾅
-      awaken.lastSnd = ta; sfx.playAt(BOLT_SFX[(rnd() * BOLT_SFX.length) | 0], { volume: 0.16 + 0.22 * conv, pan: (rnd() - 0.5) * 0.9, cutoff: 9000, rate: 0.9 + rnd() * 0.2 });
+      awaken.lastSnd = ta; buzz(18); sfx.playAt(BOLT_SFX[(rnd() * BOLT_SFX.length) | 0], { volume: 0.16 + 0.22 * conv, pan: (rnd() - 0.5) * 0.9, cutoff: 9000, rate: 0.9 + rnd() * 0.2 });
     }
   }
   function updateAwaken(now, dt) {
@@ -1586,10 +1589,14 @@ void main(){
     const ta = awaken.hold != null ? awaken.hold : (now - awaken.start) / 1000;      // hold: 테스트용으로 연출 시각을 고정
     if (awaken.hold != null) dt = 0;
     awaken.ta = ta;
-    if (!awaken.flew && ta >= AWK.fly) { awaken.flew = true; flyTo(CX, CY, 0.2, AWK.flyMs); }          // 성역으로 날아간다
-    if (!awaken.boomed && ta >= AWK.boom) { awaken.boomed = true; explodeSanctuary(); }
-    if (!awaken.pushed && ta >= AWK.conv0 - 0.2) { awaken.pushed = true; flyTo(CX, CY, 0.27, 4200); }  // 모여드는 동안 천천히 다가간다
-    if (!awaken.ignited && ta >= AWK.ignite) { awaken.ignited = true; awakened = true; shakeAmp = Math.max(shakeAmp, 15); awx.flash = 0.8; const bgm = window.RasyancutBgm; if (bgm && bgm.duck) bgm.duck(); }
+    if (!awaken.flew && ta >= AWK.fly) { awaken.flew = true; flyTo(CX, CY, awkZoom(0.2), AWK.flyMs); }          // 성역으로 날아간다
+    if (!awaken.boomed && ta >= AWK.boom) {
+      awaken.boomed = true; explodeSanctuary();
+      flyTo(CX, CY, awkZoom(phoneView() ? 0.12 : 0.15), 260);                                    // 터지는 순간 카메라가 확 물러나 충격파가 퍼지는 것이 보인다
+      buzz([70, 25, 140, 30, 260, 40, 90]);
+    }
+    if (!awaken.pushed && ta >= AWK.boom + 0.5) { awaken.pushed = true; flyTo(CX, CY, awkZoom(0.27), 4200); }  // 모여드는 동안 천천히 다가간다
+    if (!awaken.ignited && ta >= AWK.ignite) { awaken.ignited = true; awakened = true; shakeAmp = Math.max(shakeAmp, 15); buzz([50, 40, 120, 40, 50]); awx.flash = 0.8; const bgm = window.RasyancutBgm; if (bgm && bgm.duck) bgm.duck(); }
     if (ta >= AWK.conv0 && ta < AWK.conv1 - 0.15) {                                                      // 수렴하는 동안 번개가 점점 잦아진다
       const conv = clamp((ta - AWK.conv0) / (AWK.conv1 - AWK.conv0), 0, 1);
       if (awaken.nextBolt == null) awaken.nextBolt = ta;
@@ -1787,7 +1794,7 @@ void main(){
     spinAcc += dt * (1 + 2.5 * (1 - reveal));
     awEma += (dt * 1000 - awEma) * 0.06;                                           // 느리면 해상도를 낮추고, 여유가 생기면 되돌린다
     if (awEma > 42 && awQ > 0.42) awQ = Math.max(0.42, awQ * 0.97); else if (awEma < 26 && awQ < 0.85) awQ = Math.min(0.85, awQ * 1.01);
-    const q = window.innerWidth < 760 ? Math.min(awQ, 0.62) : awQ;
+    const q = window.innerWidth < 760 ? Math.min(awQ, 0.7) : awQ;
     const w = Math.max(2, Math.round(cw * q)), h = Math.max(2, Math.round(ch * q));
     const { gl, cv, U } = awGL;
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
