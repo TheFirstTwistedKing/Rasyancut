@@ -483,9 +483,9 @@ void main(){
       if (pts.some((p) => Math.hypot(x - p[0], y - p[1]) < (rad + p[4]) * 0.85 + 130)) continue;   // 크기에 맞춘 간격
       pts.push([x, y, sx, sy, rad]);
     }
-    gates = pts.map((p) => ({
+    gates = pts.map((p, i) => ({
       x: p[0], y: p[1], sx: p[2], sy: p[3], scale: Math.max(p[2], p[3]), rot: (r() - 0.5) * 0.8, v: (r() * 12) | 0,
-      phase: r() * 6.28, flip: r() < 0.5 ? -1 : 1,
+      phase: r() * 6.28, flip: r() < 0.5 ? -1 : 1, i,
     }));
     specials = SPECIAL.map((s, i) => ({ ...s, idx: i, phase: i * 2.1 }));   // 특별한 틈은 어느 관문보다 크다
   }
@@ -965,7 +965,7 @@ void main(){
     return pts;
   }
   // 번개 소리: 틈에 가까울수록 크고 또렷하며(멀면 작고 먹먹하다), 틈이 화면의 어느 쪽에 있느냐에 따라 좌우에서 난다
-  const BOLT_SFX = ["assets/sfx/lightning-1.wav?v=1", "assets/sfx/lightning-2.wav?v=1", "assets/sfx/lightning-3.wav?v=1"];
+  const BOLT_SFX = ["assets/sfx/lightning-1.wav?v=2", "assets/sfx/lightning-2.wav?v=2", "assets/sfx/lightning-3.wav?v=2", "assets/sfx/lightning-4.wav?v=2"];      // 쾅-쿵 / 쿵…쾅-쿵 / 쿵-쾅-쿵-쾅 / 멀리서 구르는 천둥
   let lastBoltSfx = -1;
   function playBoltSound(sp) {
     const sfx = window.RasyancutSfx; if (!sfx || !sfx.playAt) return;
@@ -1386,10 +1386,11 @@ void main(){
   // ───────────────────────── 눈 · 성역의 각성 ─────────────────────────
   // 작고 많은 차원의 틈(관문) 안쪽에 3초마다 눈이 떠서 2초 동안 머문다. 뜬 눈을 누르면:
   //   ① 카메라가 성역으로 날아가고  ② 성역의 경계가 폭발하며  ③ 빛(위)과 어둠(아래)이 폭발한 자리로 모여들고  ④ 붉은 소용돌이가 피어난다.
-  const EYE_PERIOD = 3, EYE_OPEN = 2, EYE_K = 0.68;                                   // 3초마다 뜨고 2초 동안 유지
+  const EYE_PERIOD = 3, EYE_OPEN = 2, EYE_K = 0.68;
+  let eyeChance = 0.01;                                                    // 관문 하나가 3초 주기마다 눈을 뜰 확률 (1%)                                   // 3초마다 뜨고 2초 동안 유지
   const eyeOpenAmt = (g, t) => {
-    const u = (t + g.phase / 6.2832 * EYE_PERIOD) % EYE_PERIOD;         // 관문마다 시작 시각이 달라 어딘가에서는 늘 눈이 떠 있다
-    if (u >= EYE_OPEN) return 0;
+    const x = t + g.phase / 6.2832 * EYE_PERIOD, cyc = Math.floor(x / EYE_PERIOD), u = x - cyc * EYE_PERIOD;   // 관문마다 주기의 시작 시각이 다르다
+    if (u >= EYE_OPEN || hash2(g.i, cyc, 91) >= eyeChance) return 0;     // 주기마다 1% 확률로만 눈이 뜬다
     return smooth01(0, 0.34, u) * (1 - smooth01(EYE_OPEN - 0.3, EYE_OPEN, u));
   };
   const EW = 320, EH = 200;
@@ -1506,54 +1507,115 @@ void main(){
   let awakened = false;                 // 붉은 소용돌이가 생겼는가 (맵을 닫으면 처음 상태로)
   let spinAcc = 0, shakeAmp = 0;
   const AWK = { fly: 0.35, flyMs: 2650, boom: 3.0, conv0: 3.4, conv1: 7.0, ignite: 7.25, done: 9.9 };
-  const awx = { debris: [], waves: [], puffs: [], sparks: [], flash: 0 };
+  const awx = { debris: [], waves: [], puffs: [], sparks: [], stars: [], bolts: [], flash: 0 };
+  const awxClear = () => { awx.debris.length = awx.waves.length = awx.puffs.length = awx.sparks.length = awx.stars.length = awx.bolts.length = 0; };
   const AWAKEN_SFX = "assets/sfx/awaken.wav?v=1";
   function startAwaken(g, now) {
     if (awaken || burn || portal) return;
     awaken = { start: now, gate: g, flew: false, boomed: false, pushed: false, ignited: false, q: 0 };
-    awx.debris.length = awx.waves.length = awx.puffs.length = awx.sparks.length = 0;
+    awxClear();
     keys.clear(); vel.x = vel.y = 0; dragging = false; pointers.clear(); stick.x = stick.y = 0;
     const sfx = window.RasyancutSfx; if (sfx && sfx.playAt) sfx.playAt(AWAKEN_SFX, { volume: 0.6 });
     const bgm = window.RasyancutBgm; if (bgm && bgm.duck) bgm.duck();
   }
+  /** 파편 하나의 모양: 불규칙한 바위, 길쭉한 쪼가리, 삼각형, 곡선 띠(깨진 경계 조각), 뾰족하게 갈라진 덩어리 — 매번 다르다. S: 크기(월드 단위) */
+  function shardShape(S, rnd) {
+    const k = rnd(), pts = [];
+    if (k < 0.30) {                                                    // 불규칙한 바위
+      const n = 4 + ((rnd() * 6) | 0), ax = 0.55 + rnd() * 0.9, ay = 0.45 + rnd() * 0.8;
+      let a = rnd() * 6.2832; const step = 6.2832 / n;
+      for (let i = 0; i < n; i++) { const r = S * (0.42 + rnd() * 0.58); pts.push([Math.cos(a) * r * ax, Math.sin(a) * r * ay]); a += step * (0.6 + rnd() * 0.8); }
+    } else if (k < 0.52) {                                             // 길쭉한 쪼가리
+      const L = S * (1.5 + rnd() * 2.2), W = S * (0.1 + rnd() * 0.16), sk = (rnd() - 0.5) * W * 2;
+      pts.push([L, sk * 0.3], [L * 0.1, W], [-L * 0.8, W * 0.4 + sk], [-L, -sk * 0.4], [-L * 0.2, -W]);
+    } else if (k < 0.68) {                                             // 삼각형
+      for (let i = 0; i < 3; i++) { const a = i * 2.0944 + (rnd() - 0.5) * 1.1, r = S * (0.55 + rnd() * 0.6); pts.push([Math.cos(a) * r, Math.sin(a) * r]); }
+    } else if (k < 0.86) {                                             // 곡선 띠: 깨진 성역 경계의 한 조각
+      const rho = S * (1.6 + rnd() * 1.8), span = 0.45 + rnd() * 0.7, th = S * (0.18 + rnd() * 0.3), m = 5 + ((rnd() * 4) | 0);
+      for (let i = 0; i <= m; i++) { const a = -span / 2 + span * i / m; pts.push([Math.cos(a) * (rho + th * (0.7 + rnd() * 0.6)) - rho, Math.sin(a) * (rho + th * 0.5)]); }
+      for (let i = m; i >= 0; i--) { const a = -span / 2 + span * i / m; pts.push([Math.cos(a) * (rho - th * (0.7 + rnd() * 0.6)) - rho, Math.sin(a) * (rho - th * 0.5)]); }
+    } else {                                                           // 뾰족하게 갈라진 덩어리
+      const n = 5 + ((rnd() * 4) | 0);
+      for (let i = 0; i < n * 2; i++) { const a = i * 3.1416 / n + (rnd() - 0.5) * 0.3, r = S * (i % 2 ? 0.3 + rnd() * 0.25 : 0.8 + rnd() * 0.5); pts.push([Math.cos(a) * r, Math.sin(a) * r]); }
+    }
+    return pts;
+  }
   function explodeSanctuary() {
     const R = SANCT_R, rnd = Math.random;
-    for (const [delay, speed, w] of [[0, 3400, 520], [0.1, 2500, 360], [0.24, 1700, 260]]) awx.waves.push({ born: 0, delay, speed, w, life: 2.1 });
-    for (let i = 0; i < 280; i++) {                                    // 경계가 깨져 사방으로 날아가는 파편
-      const a = rnd() * 6.2832, sp = 700 + Math.pow(rnd(), 1.5) * 3400, tang = (rnd() - 0.5) * 500;
-      awx.debris.push({ x: Math.cos(a) * (R + rnd() * 40), y: Math.sin(a) * (R + rnd() * 40), vx: Math.cos(a) * sp - Math.sin(a) * tang, vy: Math.sin(a) * sp + Math.cos(a) * tang, len: 26 + rnd() * 130, w: 2 + rnd() * 6, rot: a + (rnd() - 0.5) * 0.9, spin: (rnd() - 0.5) * 4, age: 0, life: 1.6 + rnd() * 1.9, hot: rnd() });
+    for (const [delay, speed, w] of [[0, 3600, 560], [0.1, 2600, 380], [0.24, 1800, 280], [0.45, 1100, 220]]) awx.waves.push({ born: 0, delay, speed, w, life: 2.4 });
+    for (let i = 0; i < 210; i++) {                                    // 모양도 크기도 제각각인 파편: 작은 부스러기가 많고 거대한 덩어리가 드물게 섞인다
+      const a = rnd() * 6.2832, S = clamp(9 * Math.exp(Math.pow(rnd(), 0.8) * 3.35), 8, 250), big = S / 250;
+      const sp = (800 + rnd() * 2800) * (1.25 - 0.75 * big), tang = (rnd() - 0.5) * 520;
+      awx.debris.push({
+        x: Math.cos(a) * (R + rnd() * 50), y: Math.sin(a) * (R + rnd() * 50), vx: Math.cos(a) * sp - Math.sin(a) * tang, vy: Math.sin(a) * sp + Math.cos(a) * tang,
+        shape: shardShape(S, rnd), S, rot: rnd() * 6.2832, spin: (rnd() - 0.5) * (9 - 7 * big), tilt: rnd() * 6.2832, tiltSp: (rnd() - 0.5) * (7 - 5 * big),
+        age: 0, life: 1.8 + rnd() * 2.2 + big * 1.4, hot: 0.6 + rnd() * 0.4, tint: rnd(),
+      });
     }
-    for (let i = 0; i < 220; i++) { const a = rnd() * 6.2832, sp = 1500 + rnd() * 4200; awx.sparks.push({ x: Math.cos(a) * R, y: Math.sin(a) * R, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, age: 0, life: 0.5 + rnd() * 1.0 }); }
+    for (let i = 0; i < 240; i++) { const a = rnd() * 6.2832, sp = 1500 + rnd() * 4200; awx.sparks.push({ x: Math.cos(a) * R, y: Math.sin(a) * R, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, age: 0, life: 0.5 + rnd() * 1.0 }); }
     for (let i = 0; i < 40; i++) {                                     // 폭발이 일으킨 검은 먼지구름
       const a = rnd() * 6.2832, sp = 280 + rnd() * 700;
       awx.puffs.push({ x: Math.cos(a) * R * 0.95, y: Math.sin(a) * R * 0.95, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, age: 0, life: 2.8 + rnd() * 1.8, r0: 150 + rnd() * 160, r1: 800 + rnd() * 1300, rot: rnd() * 6.2832, spin: (rnd() - 0.5) * 0.5 });
     }
-    awx.flash = 1; shakeAmp = 26;
+    for (let i = 0; i < 700; i++) {                                    // 빅뱅: 한 점에서 사방으로 쏟아지는 별빛(광속 잔상)
+      const a = rnd() * 6.2832, sp = 1800 + Math.pow(rnd(), 1.6) * 16000, c = rnd();
+      awx.stars.push({ x: Math.cos(a) * R * 0.2 * rnd(), y: Math.sin(a) * R * 0.2 * rnd(), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, age: 0, life: 1.3 + rnd() * 2.1, w: 0.7 + rnd() * 1.8, c });
+    }
+    awx.flash = 1; shakeAmp = 30;
+  }
+  /** 빛과 어둠이 모여드는 동안 사방에서 중심으로 꽂히는 번개: 위쪽에서는 하얗게 빛나는 번개, 아래쪽에서는 붉게 타는 검은 번개 */
+  function spawnConvBolt(ta, conv) {
+    const R = SANCT_R, rnd = Math.random, light = rnd() < 0.5;
+    const a = light ? -rnd() * Math.PI : rnd() * Math.PI, r0 = R * (3.2 + rnd() * 3.8), r1 = R * (0.18 + rnd() * 0.7), a1 = a + (rnd() - 0.5) * 0.9 + 0.5;
+    const x0 = Math.cos(a) * r0, y0 = Math.sin(a) * r0, x1 = Math.cos(a1) * r1, y1 = Math.sin(a1) * r1, len = Math.hypot(x1 - x0, y1 - y0);
+    const paths = [{ pts: boltPath(x0, y0, x1, y1, 6, len * 0.22), w: 1 }], main = paths[0].pts;
+    for (let k = 0, nb = 2 + ((rnd() * 3) | 0); k < nb; k++) {
+      const p = main[(main.length * (0.15 + 0.7 * rnd())) | 0], ba = Math.atan2(y1 - y0, x1 - x0) + (rnd() < 0.5 ? -1 : 1) * (0.35 + rnd() * 0.7), bl = len * (0.15 + rnd() * 0.3);
+      paths.push({ pts: boltPath(p[0], p[1], p[0] + Math.cos(ba) * bl, p[1] + Math.sin(ba) * bl, 5, bl * 0.22), w: 0.5 });
+    }
+    awx.bolts.push({ paths, born: ta, life: 0.24 + rnd() * 0.3, light, seed: rnd() * 100, x1, y1 });
+    for (let k = 0; k < 9; k++) { const b = rnd() * 6.2832, sp = 500 + rnd() * 1500; awx.sparks.push({ x: x1, y: y1, vx: Math.cos(b) * sp, vy: Math.sin(b) * sp, age: 0, life: 0.3 + rnd() * 0.5 }); }
+    const sfx = window.RasyancutSfx;
+    if (sfx && sfx.playAt && ta - (awaken.lastSnd || -9) > 0.5 && rnd() < 0.8) {                      // 쿵·쾅
+      awaken.lastSnd = ta; sfx.playAt(BOLT_SFX[(rnd() * BOLT_SFX.length) | 0], { volume: 0.16 + 0.22 * conv, pan: (rnd() - 0.5) * 0.9, cutoff: 9000, rate: 0.9 + rnd() * 0.2 });
+    }
   }
   function updateAwaken(now, dt) {
     shakeAmp *= Math.exp(-dt * 2.4);
     if (!awaken) return;
-    const ta = (now - awaken.start) / 1000;
+    const ta = awaken.hold != null ? awaken.hold : (now - awaken.start) / 1000;      // hold: 테스트용으로 연출 시각을 고정
+    if (awaken.hold != null) dt = 0;
     awaken.ta = ta;
     if (!awaken.flew && ta >= AWK.fly) { awaken.flew = true; flyTo(CX, CY, 0.2, AWK.flyMs); }          // 성역으로 날아간다
     if (!awaken.boomed && ta >= AWK.boom) { awaken.boomed = true; explodeSanctuary(); }
     if (!awaken.pushed && ta >= AWK.conv0 - 0.2) { awaken.pushed = true; flyTo(CX, CY, 0.27, 4200); }  // 모여드는 동안 천천히 다가간다
     if (!awaken.ignited && ta >= AWK.ignite) { awaken.ignited = true; awakened = true; shakeAmp = Math.max(shakeAmp, 15); awx.flash = 0.8; const bgm = window.RasyancutBgm; if (bgm && bgm.duck) bgm.duck(); }
+    if (ta >= AWK.conv0 && ta < AWK.conv1 - 0.15) {                                                      // 수렴하는 동안 번개가 점점 잦아진다
+      const conv = clamp((ta - AWK.conv0) / (AWK.conv1 - AWK.conv0), 0, 1);
+      if (awaken.nextBolt == null) awaken.nextBolt = ta;
+      let guard = 0;
+      while (ta >= awaken.nextBolt && guard++ < 4) { spawnConvBolt(ta, conv); awaken.nextBolt += (0.5 + Math.random()) / (2.4 + 11 * conv); }
+    }
     for (const w of awx.waves) w.born += dt;
     for (let i = awx.debris.length - 1; i >= 0; i--) {
       const p = awx.debris[i]; p.age += dt; if (p.age > p.life) { awx.debris.splice(i, 1); continue; }
-      const d = Math.exp(-dt * 0.95); p.vx *= d; p.vy *= d; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.spin * dt;
+      const d = Math.exp(-dt * (0.7 + 0.5 * (1 - p.S / 250))); p.vx *= d; p.vy *= d; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.spin * dt; p.tilt += p.tiltSp * dt;
     }
     for (let i = awx.sparks.length - 1; i >= 0; i--) {
       const p = awx.sparks[i]; p.age += dt; if (p.age > p.life) { awx.sparks.splice(i, 1); continue; }
       const d = Math.exp(-dt * 1.6); p.vx *= d; p.vy *= d; p.x += p.vx * dt; p.y += p.vy * dt;
     }
+    for (let i = awx.stars.length - 1; i >= 0; i--) {
+      const p = awx.stars[i]; p.age += dt; if (p.age > p.life) { awx.stars.splice(i, 1); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+    }
+    for (let i = awx.bolts.length - 1; i >= 0; i--) if (ta - awx.bolts[i].born > awx.bolts[i].life) awx.bolts.splice(i, 1);
     for (let i = awx.puffs.length - 1; i >= 0; i--) {
       const p = awx.puffs[i]; p.age += dt; if (p.age > p.life) { awx.puffs.splice(i, 1); continue; }
       const d = Math.exp(-dt * 0.9); p.vx *= d; p.vy *= d; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.spin * dt;
     }
     awx.flash *= Math.exp(-dt * 4.2);
-    if (ta >= AWK.done) { awaken = null; awx.debris.length = awx.waves.length = awx.puffs.length = awx.sparks.length = 0; }
+    if (ta >= AWK.done) { awaken = null; awxClear(); }
   }
   /** 성역 경계(노랑) 그림의 투명도: 폭발로 사라졌다가 붉은 소용돌이가 피어난 뒤 약하게 되돌아온다 */
   function sanctAlpha() {
@@ -1570,7 +1632,7 @@ void main(){
   const AWAKEN_FS = `
 precision highp float;
 uniform vec2 uView, uCam;
-uniform float uZ, uT, uSpin, uConv, uConvOn, uImplode, uReveal, uRedOn, uIgn, uWhite;
+uniform float uZ, uT, uSpin, uConv, uConvOn, uImplode, uReveal, uRedOn, uIgn, uWhite, uBang;
 varying vec2 vUv;
 float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -1584,6 +1646,32 @@ void main(){
   float rho = dist / 1000.0;                                       // 성역 반지름 단위
   float a = atan(rel.y, rel.x + 1e-5);
   vec3 col = vec3(0.0); float alpha = 0.0;
+
+  // ── 0. 빅뱅: 성역 경계가 터지는 순간 한 점에서 불덩이가 폭발적으로 부풀어 오르고(백열 → 황금 → 주황 → 자줏빛으로 식는다), 충격 껍질과 사방으로 뻗는 빛줄기, 렌즈 십자 섬광이 번진다
+  if (uBang >= 0.0) {
+    float ab = uBang;
+    float Rb = 0.5 + 8.5 * (1.0 - exp(-ab * 1.25));
+    float fade = exp(-ab * 0.55);
+    vec2 pc = vec2(cos(a), sin(a));
+    float pl = fbm(pc * 1.6 + vec2(rho * 0.55 - ab * 1.1, ab * 0.35));
+    float pl2 = fbm(pc * 3.4 - vec2(rho * 0.9, ab * 0.8) + 4.0);
+    float d = rho / Rb + (pl - 0.5) * 0.55 + (pl2 - 0.5) * 0.2;
+    float body = 1.0 - smoothstep(0.3, 1.0, d);
+    float heat = clamp(1.3 - d * 1.55 + (pl - 0.5) * 0.55, 0.0, 1.2);
+    vec3 hc = mix(vec3(0.45, 0.06, 0.28), vec3(1.0, 0.35, 0.08), smoothstep(0.0, 0.35, heat));
+    hc = mix(hc, vec3(1.0, 0.82, 0.32), smoothstep(0.35, 0.7, heat));
+    hc = mix(hc, vec3(1.0, 1.0, 0.94), smoothstep(0.7, 1.05, heat));
+    col += hc * body * (0.45 + 1.25 * heat) * (0.4 + 1.2 * pl2) * fade * 1.15;
+    float shell = exp(-sq((rho - Rb * 1.08) / (0.16 + 0.12 * ab))) * (1.0 - smoothstep(0.0, 4.0, ab));
+    col += mix(vec3(0.62, 0.74, 1.0), vec3(1.0, 0.95, 0.85), 0.45) * shell * 1.5;
+    float rn = vnoise(pc * 6.0 + 11.0) * 0.65 + vnoise(pc * 17.0 + 3.0 + ab * 0.3) * 0.35;
+    float rays = sq(smoothstep(0.52, 0.9, rn)) * exp(-rho / (Rb * 1.5 + 1.0)) * smoothstep(0.0, 0.2, ab) * fade;
+    col += vec3(1.0, 0.93, 0.7) * rays * 1.5;
+    float fx = exp(-sq(rel.y / (36.0 + 70.0 * ab))) * exp(-abs(rel.x) / 3200.0) * fade;
+    float fy = exp(-sq(rel.x / (26.0 + 40.0 * ab))) * exp(-abs(rel.y) / 1800.0) * fade;
+    col += vec3(1.0, 0.9, 0.6) * (fx * 0.75 + fy * 0.4);
+    col += vec3(1.0) * exp(-sq(rho / (0.5 + 0.4 * ab))) * 1.5 * exp(-ab * 1.6);
+  }
 
   // ── A. 빛과 어둠의 수렴: 위쪽에서 온 빛과 아래쪽에서 온 어둠이 소용돌이치며 중심으로 감겨 든다
   if (uConvOn > 0.001) {
@@ -1613,7 +1701,7 @@ void main(){
     darkA += disc * (1.0 - yy) * 1.2 * uConvOn;
     float bloom = exp(-sq(rr) * 0.3) * uConvOn * (0.18 + 0.5 * uConv);
     float dk = clamp(darkA * 1.9, 0.0, 0.97);
-    col = (lightCol * (lightA * 2.5 + bloom) + vec3(0.30, 0.0, 0.06) * dk * 0.35) * (1.0 - dk * 0.7);
+    col = (col + lightCol * (lightA * 2.5 + bloom) + vec3(0.30, 0.0, 0.06) * dk * 0.35) * (1.0 - dk * 0.7);      // 빅뱅의 불덩이 위에 겹쳐 얹는다
     alpha = dk;
     col += vec3(1.0, 0.98, 0.9) * uWhite * exp(-sq(rr) * 0.5);       // 한 점으로 무너지는 순간의 섬광
   }
@@ -1675,7 +1763,7 @@ void main(){
       const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
       const loc = gl.getAttribLocation(prog, "aPos"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-      const U = {}; ["uView", "uCam", "uZ", "uT", "uSpin", "uConv", "uConvOn", "uImplode", "uReveal", "uRedOn", "uIgn", "uWhite"].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
+      const U = {}; ["uView", "uCam", "uZ", "uT", "uSpin", "uConv", "uConvOn", "uImplode", "uReveal", "uRedOn", "uIgn", "uWhite", "uBang"].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
       cv.addEventListener("webglcontextlost", (e) => { e.preventDefault(); awGL = null; });
       awGL = { cv, gl, U };
     } catch (e) { awGL = null; console.warn("각성 연출(WebGL) 사용 불가 → 2D 로 대체:", e.message); }
@@ -1690,9 +1778,10 @@ void main(){
     const redOn = redOnAmt(), reveal = awaken ? smooth01(AWK.ignite, AWK.ignite + 2.3, ta) : (awakened ? 1 : 0);
     const ign = awaken && ta >= AWK.ignite ? Math.exp(-(ta - AWK.ignite) / 1.5) : 0;
     const white = awaken ? smooth01(AWK.conv1 - 0.25, AWK.conv1 + 0.2, ta) * (1 - smooth01(AWK.ignite - 0.03, AWK.ignite + 0.2, ta)) * 1.1 : 0;
-    if (convOn <= 0.001 && redOn <= 0.001) return;
+    const bang = awaken && ta >= AWK.boom && ta < AWK.boom + 6.5 ? ta - AWK.boom : -1;
+    if (convOn <= 0.001 && redOn <= 0.001 && bang < 0) return;
     const z = cam.z, viewR = Math.hypot(cw, ch) / 2 / z;
-    if (convOn <= 0.001 && Math.hypot(cam.x - CX, cam.y - CY) > SANCT_R * 5.4 + viewR) return;       // 붉은 소용돌이가 화면에 안 걸리면 건너뛴다
+    if (convOn <= 0.001 && bang < 0 && Math.hypot(cam.x - CX, cam.y - CY) > SANCT_R * 5.4 + viewR) return;       // 붉은 소용돌이가 화면에 안 걸리면 건너뛴다
     if (!awGLTried) initAwakenGL();
     if (!awGL) return;
     spinAcc += dt * (1 + 2.5 * (1 - reveal));
@@ -1705,7 +1794,7 @@ void main(){
     gl.viewport(0, 0, w, h);
     gl.uniform2f(U.uView, cw, ch); gl.uniform2f(U.uCam, cam.x - CX, cam.y - CY); gl.uniform1f(U.uZ, z); gl.uniform1f(U.uT, t); gl.uniform1f(U.uSpin, spinAcc);
     gl.uniform1f(U.uConv, conv); gl.uniform1f(U.uConvOn, convOn); gl.uniform1f(U.uImplode, implode); gl.uniform1f(U.uReveal, reveal);
-    gl.uniform1f(U.uRedOn, redOn); gl.uniform1f(U.uIgn, ign); gl.uniform1f(U.uWhite, white);
+    gl.uniform1f(U.uRedOn, redOn); gl.uniform1f(U.uIgn, ign); gl.uniform1f(U.uWhite, white); gl.uniform1f(U.uBang, bang);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
@@ -1770,17 +1859,23 @@ void main(){
     }
     ctx.restore();
   }
-  /** 성역 경계의 폭발: 충격파 · 파편 · 불꽃 (월드 좌표) */
+  /** 성역 경계의 폭발: 빅뱅의 별빛 · 충격파 · 모양이 제각각인 파편 · 불꽃, 그리고 모여드는 빛과 어둠에 꽂히는 번개 (월드 좌표) */
   function drawAwakenBlast(t) {
     if (!awaken || !awaken.boomed) return;
-    const z = cam.z, R = SANCT_R, px = 1 / z;
+    const z = cam.z, R = SANCT_R, px = 1 / z, ta = awaken.ta;
     ctx.save(); ctx.translate(CX, CY);
     ctx.globalCompositeOperation = "lighter";
-    const age = awaken.ta - AWK.boom;
-    if (age < 0.7) {                                                                  // 폭발 중심의 섬광
-      const a = Math.pow(1 - age / 0.7, 1.6), rad = R * (1.6 + 2.2 * age);
-      const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, rad); gr.addColorStop(0, `rgba(255,255,244,${a})`); gr.addColorStop(0.35, `rgba(255,236,140,${0.55 * a})`); gr.addColorStop(1, "rgba(255,220,100,0)");
+    const age = ta - AWK.boom;
+    if (age < 0.9) {                                                                  // 폭발 중심의 섬광
+      const a = Math.pow(1 - age / 0.9, 1.5), rad = R * (1.8 + 3.4 * age);
+      const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, rad); gr.addColorStop(0, `rgba(255,255,246,${a})`); gr.addColorStop(0.3, `rgba(255,238,150,${0.6 * a})`); gr.addColorStop(1, "rgba(255,220,100,0)");
       ctx.globalAlpha = 1; ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, rad, 0, 7); ctx.fill();
+    }
+    ctx.lineCap = "round";
+    for (const p of awx.stars) {                                                      // 빅뱅의 별빛: 광속 잔상처럼 길게 늘어난 빛줄기
+      const f = 1 - p.age / p.life, a = f * Math.min(1, p.age / 0.05), L = 0.05 + 0.04 * (1 - f);
+      ctx.strokeStyle = p.c < 0.55 ? `rgba(255,250,232,${0.85 * a})` : p.c < 0.8 ? `rgba(190,215,255,${0.8 * a})` : `rgba(255,214,140,${0.8 * a})`;
+      ctx.lineWidth = p.w * px * (0.6 + f); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * L, p.y - p.vy * L); ctx.stroke();
     }
     for (const w of awx.waves) {                                                      // 퍼져 나가는 충격파 고리
       const a0 = w.born - w.delay; if (a0 <= 0 || a0 > w.life) continue;
@@ -1789,16 +1884,40 @@ void main(){
       gr.addColorStop(0, "rgba(255,226,120,0)"); gr.addColorStop(0.72, `rgba(255,222,120,${0.1 * k})`); gr.addColorStop(0.94, `rgba(255,252,226,${0.95 * k})`); gr.addColorStop(1, "rgba(255,255,255,0)");
       ctx.globalAlpha = 1; ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, rr + th * 0.3, 0, 7); ctx.fill();
     }
-    ctx.lineCap = "round";
-    for (const p of awx.debris) {                                                     // 깨져 날아가는 경계의 조각
-      const f = p.age / p.life, a = (1 - f) * (f < 0.06 ? f / 0.06 : 1), L = p.len, W = Math.max(p.w, 1.2 * px);
-      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
-      ctx.fillStyle = `rgba(255,${(210 + 45 * p.hot) | 0},${(120 + 100 * p.hot) | 0},${0.22 * a})`;
-      ctx.beginPath(); ctx.moveTo(L * 0.65, 0); ctx.lineTo(-L * 0.35, W * 2.6); ctx.lineTo(-L * 0.65, 0); ctx.lineTo(-L * 0.35, -W * 2.6); ctx.closePath(); ctx.fill();   // 번짐
-      ctx.fillStyle = `rgba(255,252,232,${0.95 * a})`;
-      ctx.beginPath(); ctx.moveTo(L * 0.5, 0); ctx.lineTo(-L * 0.25, W); ctx.lineTo(-L * 0.5, 0); ctx.lineTo(-L * 0.25, -W); ctx.closePath(); ctx.fill();
+    // 번개: 위쪽은 하얗게 빛나는 번개, 아래쪽은 붉은 테두리가 타오르는 검은 번개
+    for (const b of awx.bolts) {
+      const ba = ta - b.born, f0 = Math.pow(1 - ba / b.life, 1.3), f = f0 * (0.55 + 0.45 * (Math.sin(ba * 95 + b.seed) > -0.15 ? 1 : 0.3));
+      const rg = ctx.createRadialGradient(b.x1, b.y1, 0, b.x1, b.y1, 520); rg.addColorStop(0, b.light ? `rgba(255,244,180,${0.5 * f})` : `rgba(255,50,50,${0.3 * f})`); rg.addColorStop(1, "rgba(255,200,100,0)");
+      ctx.globalAlpha = 1; ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(b.x1, b.y1, 520, 0, 7); ctx.fill();
+      const layers = b.light ? [[18, "255,226,110", 0.14], [7, "255,244,170", 0.45], [2.4, "255,255,246", 0.98]] : [[22, "170,10,30", 0.16], [9, "230,30,40", 0.42]];
+      for (const [wpx, col, a] of layers) for (const p of b.paths) {
+        ctx.strokeStyle = `rgba(${col},${a * f})`; ctx.lineWidth = Math.max(wpx * p.w * px, wpx * p.w * 0.08 * px * z * 1.0);
+        ctx.beginPath(); p.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+      }
+    }
+    ctx.globalCompositeOperation = "source-over";
+    for (const b of awx.bolts) {                                                      // 검은 번개의 몸통 (붉은 빛 위에 얹는다)
+      if (b.light) continue;
+      const ba = ta - b.born, f = Math.pow(1 - ba / b.life, 1.3) * (0.55 + 0.45 * (Math.sin(ba * 95 + b.seed) > -0.15 ? 1 : 0.3));
+      for (const [wpx, col, a] of [[6.5, "0,0,0", 0.97], [1.3, "255,90,90", 0.8]]) for (const p of b.paths) {
+        ctx.strokeStyle = `rgba(${col},${a * f})`; ctx.lineWidth = Math.max(wpx * p.w * px, 0.8 * px);
+        ctx.beginPath(); p.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+      }
+    }
+    // 파편: 크기·모양이 제각각. 식어 가며 달궈진 가장자리만 빛나고, 3차원으로 뒹굴 듯 납작해졌다 펴진다
+    ctx.lineJoin = "round";
+    for (const p of awx.debris) {
+      const f = p.age / p.life, a = Math.pow(1 - f, 1.1) * (f < 0.05 ? f / 0.05 : 1), heat = Math.pow(1 - f, 0.8) * p.hot, sy = Math.max(0.22, Math.abs(Math.cos(p.tilt)));
+      const path = new Path2D(); p.shape.forEach(([x, y], i) => (i ? path.lineTo(x, y) : path.moveTo(x, y))); path.closePath();
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.scale(1, sy);
+      ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.3 * a * heat; ctx.strokeStyle = p.tint < 0.5 ? "rgb(255,196,96)" : "rgb(255,150,90)"; ctx.lineWidth = Math.max(p.S * 0.22, 3 * px); ctx.stroke(path);   // 달궈진 번짐
+      ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = a;
+      const hh = heat * heat; ctx.fillStyle = `rgb(${(34 + 205 * hh) | 0},${(22 + 150 * hh * heat) | 0},${(20 + 70 * hh * hh) | 0})`; ctx.fill(path);                                  // 몸통: 막 터진 조각만 달궈져 있고 식으면 그을린 검붉은 돌이 된다
+      ctx.globalAlpha = a * 0.45; ctx.fillStyle = `rgba(255,${(190 + 60 * heat) | 0},${(120 + 90 * heat) | 0},${0.42 * hh + 0.08})`; ctx.save(); ctx.scale(0.55, 0.55); ctx.translate(-p.S * 0.06, -p.S * 0.05); ctx.fill(path); ctx.restore();   // 면의 하이라이트
+      ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = a * (0.35 + 0.65 * heat); ctx.strokeStyle = `rgba(255,${(236 + 19 * heat) | 0},${(180 + 60 * heat) | 0},1)`; ctx.lineWidth = Math.max(p.S * 0.045, 1.2 * px); ctx.stroke(path);       // 달궈진 가장자리
       ctx.restore();
     }
+    ctx.globalCompositeOperation = "lighter";
     for (const p of awx.sparks) {                                                     // 튀는 불꽃
       const f = 1 - p.age / p.life;
       ctx.strokeStyle = `rgba(255,${(150 + 100 * f) | 0},${(60 + 110 * f * f) | 0},${0.9 * f})`; ctx.lineWidth = (1.2 + 1.6 * f) * px;
@@ -1816,7 +1935,10 @@ void main(){
       const gr = ctx.createRadialGradient(cw / 2, ch / 2, Math.min(cw, ch) * 0.2, cw / 2, ch / 2, Math.hypot(cw, ch) * 0.62); gr.addColorStop(0, "rgba(120,0,10,0)"); gr.addColorStop(1, `rgba(150,0,14,${a})`);
       ctx.fillStyle = gr; ctx.fillRect(0, 0, cw, ch);
     }
-    if (ta >= AWK.boom && ta < AWK.boom + 1.2) { const a = ta < AWK.boom + 0.07 ? 0.96 : 0.96 * Math.exp(-(ta - AWK.boom - 0.07) / 0.2); ctx.fillStyle = `rgba(255,250,214,${a})`; ctx.fillRect(0, 0, cw, ch); }
+    if (ta >= AWK.boom && ta < AWK.boom + 2.2) {                                          // 빅뱅의 백색 섬광 → 황금빛 잔광
+      const a = ta < AWK.boom + 0.07 ? 1 : Math.exp(-(ta - AWK.boom - 0.07) / 0.15); ctx.fillStyle = `rgba(255,252,226,${a})`; ctx.fillRect(0, 0, cw, ch);
+      const g2 = 0.16 * Math.exp(-(ta - AWK.boom) / 0.8); ctx.fillStyle = `rgba(255,205,110,${g2})`; ctx.fillRect(0, 0, cw, ch);
+    }
     if (ta >= AWK.conv1 - 0.1 && ta < AWK.ignite) {                                    // 한 점으로 무너지는 순간: 화면 가장자리가 어두워진다
       const k = smooth01(AWK.conv1 - 0.1, AWK.ignite, ta), gr = ctx.createRadialGradient(cw / 2, ch / 2, 0, cw / 2, ch / 2, Math.hypot(cw, ch) * 0.6);
       gr.addColorStop(0, "rgba(0,0,0,0)"); gr.addColorStop(0.5, `rgba(0,0,0,${0.55 * k})`); gr.addColorStop(1, `rgba(0,0,0,${0.9 * k})`); ctx.fillStyle = gr; ctx.fillRect(0, 0, cw, ch);
@@ -2834,13 +2956,13 @@ void main(){
     open = false; cancelAnimationFrame(raf);
     el.screen.classList.remove("open"); el.screen.setAttribute("inert", ""); el.screen.setAttribute("aria-hidden", "true");
     document.body.classList.remove("map-open");
-    awaken = null; awakened = false; shakeAmp = 0; spinAcc = 0; awx.debris.length = awx.waves.length = awx.puffs.length = awx.sparks.length = 0;      // 각성한 성역은 맵을 닫으면 처음으로 돌아간다
+    awaken = null; awakened = false; shakeAmp = 0; spinAcc = 0; awxClear();      // 각성한 성역은 맵을 닫으면 처음으로 돌아간다
     keys.clear(); pointers.clear(); dragging = false; burn = null; if (portal) endPortal(); el.burn.classList.remove("on"); el.fire.classList.remove("on"); el.toast.classList.remove("on"); el.screen.classList.remove("burning");
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
   window.RasyancutMap = {
     prepare, show, hide, isOpen: () => open, isLocked: () => !!portal || !!awaken,
-    _debug: { getAwaken: () => awaken, isAwakened: () => awakened, startAwaken: (g) => startAwaken(g || gates[0], performance.now()), hitEye, eyeOpenAmt, awakenSeek: (sec) => { if (awaken) awaken.start -= sec * 1000; }, setAwakenQ: (q) => { awQ = q; awEma = 16; }, SKIP, getVq: () => vq, cam, gates: () => gates, specials: () => specials, WORLD, R_MAP, MAX_SPEED, SANCT_R, flyTo, getBurn: () => burn, startBurn: () => startBurn(performance.now()), startPortal: () => startPortal(specials[0], performance.now()), setPortalQ: (q) => { portalQ = q; }, freezePortal: (ms) => { if (portal) portal.fixed = ms; }, hitSpecial, vortexWorld: () => vortexWorld(specials[0]), PT, forceRiftGlitch: (on) => { if (on) { riftG.t0 = -1; riftG.dur = 1e9; riftG.amp = 0.9; riftG.next = 1e9; } else { riftG.dur = 0; riftG.next = 0; } } },
+    _debug: { setEyeChance: (c) => { eyeChance = c; }, getAwaken: () => awaken, isAwakened: () => awakened, startAwaken: (g) => startAwaken(g || gates[0], performance.now()), hitEye, eyeOpenAmt, awakenHold: (target) => { const a = awaken; if (!a) return; a.hold = null; for (let k = a.ta || 0; k < target; k += 1 / 45) updateAwaken(a.start + k * 1000, 1 / 45); a.hold = target; updateAwaken(performance.now(), 0.0001); }, awakenSeek: (sec) => { if (awaken) awaken.start -= sec * 1000; }, setAwakenQ: (q) => { awQ = q; awEma = 16; }, SKIP, getVq: () => vq, cam, gates: () => gates, specials: () => specials, WORLD, R_MAP, MAX_SPEED, SANCT_R, flyTo, getBurn: () => burn, startBurn: () => startBurn(performance.now()), startPortal: () => startPortal(specials[0], performance.now()), setPortalQ: (q) => { portalQ = q; }, freezePortal: (ms) => { if (portal) portal.fixed = ms; }, hitSpecial, vortexWorld: () => vortexWorld(specials[0]), PT, forceRiftGlitch: (on) => { if (on) { riftG.t0 = -1; riftG.dur = 1e9; riftG.amp = 0.9; riftG.next = 1e9; } else { riftG.dur = 0; riftG.next = 0; } } },
   };
 })();
