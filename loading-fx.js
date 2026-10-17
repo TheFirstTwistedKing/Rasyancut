@@ -73,7 +73,7 @@ float motes(vec2 p, float scale, vec2 vel, float seed) {
   off += vec2(sin(uT * 1.3 + h * 6.28) * 0.12, cos(uT * 1.1 + h * 9.0) * 0.08);
   float d = length(f - off);
   float tw = 0.5 + 0.5 * sin(uT * (2.0 + h * 3.0) + h * 40.0);
-  return step(0.80, h) * smoothstep(0.075, 0.0, d) * tw;
+  return step(0.80, h) * (1.0 - smoothstep(0.0, 0.075, d)) * tw;
 }
 
 // ── 1. 검붉은 연기와 구름 ─────────────────────────────────────────────
@@ -165,7 +165,7 @@ vec3 fx3(vec2 p, vec2 uv, float g) {
     float ph = fract(uT * 0.17 + float(k) * 0.5);
     float rr = 0.40 + ph * 0.62;
     float amp = (1.0 - ph) * (1.0 - ph) * smoothstep(0.0, 0.1, ph);
-    float ring = exp(-pow((r - rr) / (0.04 + 0.07 * ph), 2.0));
+    float ring = exp(-pow(abs((r - rr) / (0.04 + 0.07 * ph)), 2.0));
     col += vec3(0.25, 0.60, 1.0) * ring * amp * 0.55 * (0.55 + 0.45 * fbm3(dir * 4.0 + uT * 0.1)) * g;
   }
   float e = motes(p, 11.0, vec2(0.0, -0.35), 2.0) + 0.6 * motes(p, 20.0, vec2(0.05, -0.55), 9.0);
@@ -187,7 +187,7 @@ vec3 fx5(vec2 p, vec2 uv, float g) {
   float keep = n1 * 0.72 + n2 * 0.28 + dens * 0.62;
   float th = 0.40 + 0.30 * decay;
   float m = smoothstep(th - 0.025, th + 0.025, keep);
-  float front = smoothstep(0.075, 0.0, abs(keep - th)) * near;
+  float front = (1.0 - smoothstep(0.0, 0.075, abs(keep - th))) * near;
   vec3 col = im.rgb * m;
   // 썩은 얼룩
   float blot = fbm(uv * 10.0 + vec2(uT * 0.02, 4.0));
